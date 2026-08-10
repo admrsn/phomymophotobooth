@@ -4,7 +4,7 @@
  */
 
 import { BLETransport } from './ble.js';
-import { CanvasRenderer, PX_PER_MM } from './canvas.js';
+import { CanvasRenderer } from './canvas.js';
 import { print } from './printer.js';
 
 export class PhotoboothApp {
@@ -72,6 +72,7 @@ export class PhotoboothApp {
   updateStatus(message) {
     if (this.statusElement) {
       this.statusElement.textContent = message;
+      this.statusElement.classList.add('visible'); // Added missing CSS class!
     }
     console.log('[Photobooth]', message);
   }
@@ -83,21 +84,23 @@ export class PhotoboothApp {
     this.capturedPhotos = [];
     this.startButton.disabled = true;
     
-    this.updateStatus('Starting photo session...');
-    
     try {
-      // Capture 5 photos
+      // 1. Connect to printer FIRST to satisfy Web Bluetooth user-gesture requirements
+      if (!this.ble.isConnected()) {
+        this.updateStatus('Connecting to printer...');
+        await this.ble.connect();
+      }
+        
+      this.updateStatus('Starting photo session...');
+      
+      // 2. Capture 5 photos
       for (let i = 0; i < this.photoCount; i++) {
         this.updateStatus(`Photo ${i + 1} of ${this.photoCount}`);
-        
-        // Show countdown
         await this.showCountdown();
-        
-        // Capture frame
         await this.capturePhoto();
       }
       
-      // All photos captured - stitch them
+      // 3. All photos captured - stitch them
       this.updateStatus('Stitching photos...');
       const compositeCanvas = await this.stitchPhotos();
       
@@ -109,26 +112,28 @@ export class PhotoboothApp {
         ctx.drawImage(compositeCanvas, 0, 0);
       }
       
-      this.updateStatus('Preparing to print...');
-      
-      // Connect to printer if not already connected
-      if (!this.ble.isConnected()) {
-        this.updateStatus('Connecting to printer...');
-        await this.ble.connect();
-      }
-      
-      // Dither and prepare raster data
       this.updateStatus('Processing image for printer...');
       const rasterData = this.getRasterDataFromCanvas(compositeCanvas);
       
-      // Send to printer using the correct function signature from printer.js
+      // 4. Send to printer using the correct function signature from printer.js
       this.updateStatus('Sending to printer...');
       await print(this.ble, rasterData, { isBLE: true, continuous: true });
       
       this.updateStatus('Complete! Strip printed successfully.');
+      
+      // Hide status after success
+      setTimeout(() => {
+          if (this.statusElement) this.statusElement.classList.remove('visible');
+      }, 4000);
+      
     } catch (error) {
       console.error('Photo session error:', error);
       this.updateStatus(`Error: ${error.message}. Please try again.`);
+      
+      // Hide error after 5 seconds so user can try again
+      setTimeout(() => {
+          if (this.statusElement) this.statusElement.classList.remove('visible');
+      }, 5000);
     } finally {
       this.isCapturing = false;
       this.startButton.disabled = false;
@@ -138,14 +143,11 @@ export class PhotoboothApp {
   showCountdown() {
     return new Promise((resolve) => {
       if (!this.countdownElement) {
-        // No countdown element, just use a delay
         setTimeout(resolve, this.countdownDuration * 1000);
         return;
       }
       
       let remaining = this.countdownDuration;
-      
-      // Make countdown visible
       this.countdownElement.classList.add('visible');
       
       const tick = () => {
@@ -155,7 +157,6 @@ export class PhotoboothApp {
           remaining--;
           setTimeout(tick, 1000);
         } else {
-          // Hide countdown and resolve
           this.countdownElement.classList.remove('visible');
           this.countdownElement.textContent = '';
           resolve();
@@ -168,7 +169,6 @@ export class PhotoboothApp {
   
   capturePhoto() {
     return new Promise((resolve) => {
-      // Create temporary canvas to capture current frame
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = this.videoElement.videoWidth;
       tempCanvas.height = this.videoElement.videoHeight;
@@ -176,20 +176,16 @@ export class PhotoboothApp {
       const ctx = tempCanvas.getContext('2d');
       ctx.drawImage(this.videoElement, 0, 0);
       
-      // Store as data URL (JPEG for smaller file size)
       const photoData = tempCanvas.toDataURL('image/jpeg', 0.9);
       this.capturedPhotos.push(photoData);
       
       console.log(`Captured photo ${this.capturedPhotos.length}/${this.photoCount}`);
-      
-      // Small delay before next photo
       setTimeout(resolve, 500);
     });
   }
   
   stitchPhotos() {
     return new Promise((resolve, reject) => {
-      // Load all photos as images
       const photoImages = [];
       let loadedCount = 0;
       
@@ -200,7 +196,6 @@ export class PhotoboothApp {
           loadedCount++;
           
           if (loadedCount === this.capturedPhotos.length) {
-            // All photos loaded - now stitch them
             const composite = this.createComposite(photoImages);
             resolve(composite);
           }
@@ -216,50 +211,42 @@ export class PhotoboothApp {
       throw new Error('No photos to stitch');
     }
     
-    // Use first image dimensions as reference
     const photoWidth = photoImages[0].width;
     const photoHeight = photoImages[0].height;
     const border = this.borderSize;
     
-    // Calculate composite canvas size
     const compositeWidth = photoWidth + (border * 2);
     const compositeHeight = (photoHeight * this.photoCount) + (border * (this.photoCount + 1));
     
-    // Create off-screen canvas
     const compositeCanvas = document.createElement('canvas');
     compositeCanvas.width = compositeWidth;
     compositeCanvas.height = compositeHeight;
     
     const ctx = compositeCanvas.getContext('2d');
     
-    // Fill background with white (this becomes the border)
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, compositeWidth, compositeHeight);
     
-    // Draw each photo positioned with white borders/spacing
     photoImages.forEach((img, index) => {
-      const x = border; // left border
-      const y = border + (index * (photoHeight + border)); // top border + spacing
+      const x = border;
+      const y = border + (index * (photoHeight + border));
       
       ctx.drawImage(img, x, y, photoWidth, photoHeight);
     });
-    
-    console.log(`Created composite canvas: ${compositeWidth}x${compositeHeight}px`);
     
     return compositeCanvas;
   }
   
   getRasterDataFromCanvas(canvas) {
-    // Create a temporary CanvasRenderer to use its dithering and raster conversion
     const tempCanvas = document.createElement('canvas');
     const renderer = new CanvasRenderer(tempCanvas);
     
-    const widthMm = canvas.width / PX_PER_MM;
-    const heightMm = canvas.height / PX_PER_MM;
+    // 203 DPI thermal printers are exactly 8 dots per mm
+    const widthMm = Math.round(canvas.width / 8);
+    const heightMm = Math.round(canvas.height / 8);
     
     renderer.setDimensions(widthMm, heightMm, 1, false);
     
-    // Get pixel data from composite
     const tempCtx = document.createElement('canvas').getContext('2d');
     tempCtx.canvas.width = canvas.width;
     tempCtx.canvas.height = canvas.height;
@@ -268,8 +255,7 @@ export class PhotoboothApp {
     const imageData = tempCtx.getImageData(0, 0, canvas.width, canvas.height);
     const pixels = imageData.data;
     
-    // Use printer width of 72 bytes (576 pixels, typical for thermal printers)
-    const printerWidthBytes = 72;
+    const printerWidthBytes = 72; // 576 pixels wide
     const rasterData = renderer._pixelsToRaster(
       pixels,
       canvas.width,
