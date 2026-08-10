@@ -19,10 +19,11 @@ export class PhotoboothApp {
     this.compositeCanvasElement = this.resolveElement(options.compositeCanvasId);
     
     this.photoCount = 3;           
-    this.printerWidthPx = 576;     // Full printer head width (72 bytes * 8)
-    this.photoHeightPx = 864;      // 2:3 Aspect ratio height (576 * 1.5) matching the UI viewfinder
-    this.borderSize = 16;          // Vertical spacing between photos
-    this.bottomMargin = 160;       // ~2cm blank padding at the END of the print for easy tearing
+    this.printerWidthPx = 576;     
+    this.photoHeightPx = 864;      
+    this.borderSize = 16;          
+    this.bottomMargin = 160;       
+    this.cornerRadius = 32;        // 32px rounded corners for the printed photos
     this.countdownDuration = 3;    
     this.capturedPhotos = [];
     
@@ -121,6 +122,10 @@ export class PhotoboothApp {
   updateStatus(message) {
     if (this.statusElement) {
       this.statusElement.textContent = message;
+      
+      // Force animation reflow
+      this.statusElement.classList.remove('visible');
+      void this.statusElement.offsetWidth;
       this.statusElement.classList.add('visible');
     }
     console.log('[Photobooth]', message);
@@ -150,7 +155,6 @@ export class PhotoboothApp {
       this.updateStatus('Get ready!');
       
       for (let i = 0; i < this.photoCount; i++) {
-        this.updateStatus(`Photo ${i + 1} of ${this.photoCount}`);
         await this.showCountdown();
         await this.capturePhoto();
       }
@@ -169,10 +173,9 @@ export class PhotoboothApp {
       const rasterData = this.getRasterDataFromCanvas(compositeCanvas);
       
       this.updateStatus('Sending to printer...');
-      // Kept continuous mode and standard density, increased feed for clean tearing
       await print(this.ble, rasterData, { isBLE: true, continuous: true, feed: 100 });
       
-      this.updateStatus('Complete! Strip printed successfully.');
+      this.updateStatus('Complete! Grab your photos!');
       setTimeout(() => this.hideStatus(), 4000);
       
     } catch (error) {
@@ -193,12 +196,15 @@ export class PhotoboothApp {
       }
       
       let remaining = this.countdownDuration;
-      this.countdownElement.classList.add('visible');
       
       const tick = () => {
         if (remaining > 0) {
+          // Force CSS animation restart for each number
+          this.countdownElement.classList.remove('visible');
+          void this.countdownElement.offsetWidth;
+          this.countdownElement.classList.add('visible');
+          
           this.countdownElement.textContent = remaining;
-          this.updateStatus(`Capturing in ${remaining}...`);
           remaining--;
           setTimeout(tick, 1000);
         } else {
@@ -226,7 +232,6 @@ export class PhotoboothApp {
       
       const ctx = tempCanvas.getContext('2d');
 
-      // 2:3 aspect ratio center crop matching viewfinder overlay
       const videoWidth = this.videoElement.videoWidth;
       const videoHeight = this.videoElement.videoHeight;
       const targetAspect = this.printerWidthPx / this.photoHeightPx; 
@@ -280,6 +285,7 @@ export class PhotoboothApp {
     const photoWidth = this.printerWidthPx; 
     const photoHeight = this.photoHeightPx; 
     const border = this.borderSize;
+    const r = this.cornerRadius;
     
     const compositeWidth = photoWidth; 
     const compositeHeight = (photoHeight * this.photoCount) + (border * (this.photoCount + 1)) + this.bottomMargin;
@@ -293,18 +299,37 @@ export class PhotoboothApp {
     ctx.fillRect(0, 0, compositeWidth, compositeHeight);
     
     photoImages.forEach((img, index) => {
-      // Print bottom-up: reverse the index so the last photo taken is placed at the top (Y=0, prints first).
       const reverseIndex = (this.photoCount - 1) - index;
-      
       const x = 0; 
       const y = border + (reverseIndex * (photoHeight + border));
       
       ctx.save();
       
-      // Move to the center of the target image slot, rotate 180 degrees, and draw.
+      // Move to center, rotate 180 degrees
       ctx.translate(x + photoWidth / 2, y + photoHeight / 2);
       ctx.rotate(Math.PI);
-      ctx.drawImage(img, -photoWidth / 2, -photoHeight / 2, photoWidth, photoHeight);
+      
+      // Create rounded rectangle clipping path centered at 0,0
+      const hw = photoWidth / 2;
+      const hh = photoHeight / 2;
+      
+      ctx.beginPath();
+      ctx.moveTo(-hw + r, -hh);
+      ctx.lineTo(hw - r, -hh);
+      ctx.quadraticCurveTo(hw, -hh, hw, -hh + r);
+      ctx.lineTo(hw, hh - r);
+      ctx.quadraticCurveTo(hw, hh, hw - r, hh);
+      ctx.lineTo(-hw + r, hh);
+      ctx.quadraticCurveTo(-hw, hh, -hw, hh - r);
+      ctx.lineTo(-hw, -hh + r);
+      ctx.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
+      ctx.closePath();
+      
+      // Apply the clip
+      ctx.clip();
+      
+      // Draw image inside the clipped region
+      ctx.drawImage(img, -hw, -hh, photoWidth, photoHeight);
       
       ctx.restore();
     });
