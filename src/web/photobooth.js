@@ -5,7 +5,7 @@
 
 import { BLETransport } from './ble.js';
 import { CanvasRenderer, PX_PER_MM } from './canvas.js';
-import { PrinterProtocol } from './printer.js';
+import { Printer } from './printer.js';
 
 export class PhotoboothApp {
   constructor(options = {}) {
@@ -28,7 +28,7 @@ export class PhotoboothApp {
     
     // Bluetooth and printer
     this.ble = BLETransport.getShared();
-    this.printerProtocol = null;
+    this.printer = null;
     
     this.init();
   }
@@ -122,14 +122,14 @@ export class PhotoboothApp {
       this.updateStatus('Processing image for printer...');
       const rasterData = this.getRasterDataFromCanvas(compositeCanvas);
       
-      // Initialize printer protocol if needed
-      if (!this.printerProtocol) {
-        this.printerProtocol = new PrinterProtocol(this.ble);
+      // Initialize printer if needed
+      if (!this.printer) {
+        this.printer = new Printer(this.ble);
       }
       
       // Send to printer
       this.updateStatus('Sending to printer...');
-      await this.printerProtocol.printRaster(rasterData.data, rasterData.widthBytes, rasterData.heightLines);
+      await this.printer.printRaster(rasterData.data, rasterData.widthBytes, rasterData.heightLines);
       
       this.updateStatus('Complete! Strip printed successfully.');
     } catch (error) {
