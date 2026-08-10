@@ -1,6 +1,5 @@
 /**
  * Photobooth application for capturing and printing photo strips
- * Features 3 photos, 2:3 ratio mapping, flash effect, clean control deck, and auto-hiding connection button
  */
 
 import { BLETransport } from './ble.js';
@@ -19,11 +18,11 @@ export class PhotoboothApp {
     this.flashElement = this.resolveElement(options.flashElementId);
     this.compositeCanvasElement = this.resolveElement(options.compositeCanvasId);
     
-    this.photoCount = 3;           // Set to 3 photos per strip
-    this.printerWidthPx = 576;     // Matches 72 printer bytes (no side borders / wrap fix)
-    this.photoHeightPx = 864;      // 2:3 Aspect ratio height (576 * 1.5)
-    this.borderSize = 16;          // Vertical spacing between strips
-    this.countdownDuration = 3;    // Seconds
+    this.photoCount = 3;           
+    this.printerWidthPx = 576;     
+    this.photoHeightPx = 864;      
+    this.borderSize = 16;          
+    this.countdownDuration = 3;    
     this.capturedPhotos = [];
     
     this.stream = null;
@@ -78,7 +77,6 @@ export class PhotoboothApp {
     }
     
     if (this.connectButton) {
-      // Automatically hide the connect button once connected so guests can't click it
       if (connected) {
         this.connectButton.classList.add('hidden');
       } else {
@@ -214,10 +212,9 @@ export class PhotoboothApp {
   
   capturePhoto() {
     return new Promise((resolve) => {
-      // Trigger camera flash screen effect reliably via CSS animation class
       if (this.flashElement) {
         this.flashElement.classList.remove('flash');
-        void this.flashElement.offsetWidth; // Force DOM reflow to re-trigger animation
+        void this.flashElement.offsetWidth; 
         this.flashElement.classList.add('flash');
       }
 
@@ -227,10 +224,9 @@ export class PhotoboothApp {
       
       const ctx = tempCanvas.getContext('2d');
 
-      // Center-crop preview mapping precisely to the viewfinder box ratio
       const videoWidth = this.videoElement.videoWidth;
       const videoHeight = this.videoElement.videoHeight;
-      const targetAspect = this.printerWidthPx / this.photoHeightPx; // 2:3
+      const targetAspect = this.printerWidthPx / this.photoHeightPx; 
       const videoAspect = videoWidth / videoHeight;
 
       let srcW = videoWidth;
