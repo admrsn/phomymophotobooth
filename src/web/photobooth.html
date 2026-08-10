@@ -8,7 +8,6 @@
     <meta http-equiv="Expires" content="0">
     <title>Phomymo Photobooth</title>
     
-    <!-- Import a fun, rounded modern font -->
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;900&display=swap" rel="stylesheet">
 
     <script>
@@ -35,7 +34,7 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background-color: #1a0b14; /* Deep warm tint for edges */
+            background-color: #1a0b14;
             font-family: 'Nunito', -apple-system, BlinkMacSystemFont, sans-serif;
         }
 
@@ -63,17 +62,17 @@
             transform: scaleX(-1);
         }
 
-        /* Viewfinder with rounded corners to match the printed output */
+        /* Viewfinder framing box matching 3:4 portrait print aspect ratio */
         .viewfinder-overlay {
             position: absolute;
-            top: 50%;
+            top: 48%;
             left: 50%;
             transform: translate(-50%, -50%);
             width: 100vw;
             max-width: 100%;
-            aspect-ratio: 2 / 3;
+            aspect-ratio: 3 / 4;
             border: 3px dashed rgba(255, 255, 255, 0.8);
-            border-radius: 20px; /* Visually matches the 32px print radius */
+            border-radius: 20px; 
             box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
             pointer-events: none;
             z-index: 5;
@@ -111,13 +110,13 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 12px;
+            gap: 16px;
             width: 100%;
-            max-width: 400px;
+            max-width: 480px;
             margin: 0 auto;
         }
 
-        /* Fun, Party-Themed Start Button */
+        /* Buttons Styling */
         #start-button {
             flex: 1;
             height: 64px;
@@ -134,12 +133,6 @@
             letter-spacing: 1px;
         }
 
-        /* Pulsing effect to invite tapping */
-        @keyframes pulse-btn {
-            0% { box-shadow: 0 0 0 0 rgba(255, 65, 108, 0.6); }
-            70% { box-shadow: 0 0 0 15px rgba(255, 65, 108, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(255, 65, 108, 0); }
-        }
         #start-button:not(:disabled) {
             animation: pulse-btn 2.5s infinite;
         }
@@ -156,43 +149,48 @@
             box-shadow: none;
         }
 
-        #connect-printer-btn {
+        #cancel-print-btn {
+            flex: 1;
             height: 64px;
-            padding: 0 20px;
-            font-size: 16px;
-            font-weight: 700;
-            background-color: rgba(255, 255, 255, 0.95);
-            color: #ff416c;
+            font-size: 20px;
+            font-weight: 900;
+            background: #ef4444; 
+            color: white;
             border: none;
             border-radius: 20px;
             cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
-            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+            transition: all 0.2s ease;
             touch-action: manipulation;
+            letter-spacing: 1px;
         }
 
-        #connect-printer-btn:active {
+        #cancel-print-btn:active {
             transform: scale(0.94);
+        }
+
+        #reprint-btn {
+            height: 64px;
+            padding: 0 24px;
+            font-size: 18px;
+            font-weight: 800;
+            background: transparent;
+            color: white;
+            border: 3px solid rgba(255, 255, 255, 0.5);
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            touch-action: manipulation;
+            backdrop-filter: blur(4px);
+        }
+
+        #reprint-btn:active {
+            transform: scale(0.94);
+            background: rgba(255,255,255,0.1);
         }
 
         .hidden {
             display: none !important;
-        }
-
-        .status-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background-color: #cbd5e1;
-            display: inline-block;
-        }
-
-        .status-dot.connected {
-            background-color: #22c55e;
-            box-shadow: 0 0 10px #22c55e;
         }
 
         .status-display {
@@ -244,7 +242,12 @@
             animation: bouncy-count 1s cubic-bezier(0.175, 0.885, 0.32, 1.275) infinite;
         }
 
-        /* Energetic, bouncy countdown animation */
+        @keyframes pulse-btn {
+            0% { box-shadow: 0 0 0 0 rgba(255, 65, 108, 0.6); }
+            70% { box-shadow: 0 0 0 15px rgba(255, 65, 108, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 65, 108, 0); }
+        }
+
         @keyframes bouncy-count {
             0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
             30% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
@@ -265,10 +268,8 @@
 
         <div class="ui-layer">
             <div class="button-area">
-                <button id="connect-printer-btn">
-                    <span id="status-dot" class="status-dot"></span>
-                    <span id="connect-btn-text">Connect Printer</span>
-                </button>
+                <button id="cancel-print-btn" class="hidden">CANCEL PRINT</button>
+                <button id="reprint-btn" class="hidden">RE-PRINT</button>
                 <button id="start-button">START</button>
             </div>
         </div>
@@ -284,9 +285,8 @@
         const app = new PhotoboothApp({
             videoElementId: 'camera-feed',
             startButtonId: 'start-button',
-            connectButtonId: 'connect-printer-btn',
-            statusButtonTextId: 'connect-btn-text',
-            statusDotId: 'status-dot',
+            cancelButtonId: 'cancel-print-btn',
+            reprintButtonId: 'reprint-btn',
             countdownElementId: 'countdown',
             statusDisplayId: 'status-display',
             flashElementId: 'flash-overlay',
