@@ -65,7 +65,7 @@ export class PhotoboothApp {
       }
       if (this.cancelButton) {
         this.cancelButton.addEventListener('click', () => { 
-          // Flag the cancellation to break the print loop via the callback
+          // Set the flag; printer.js will now natively drain the remaining bytes
           this.printCancelled = true; 
         });
       }
@@ -207,15 +207,17 @@ export class PhotoboothApp {
       if (error.message === 'CANCELLED') {
         this.updateStatus('Print cancelled. Ejecting paper...', true);
         try {
-          // printer.js has already safely drained the zero-bytes
+          // The printer has safely drained the zeroes and completed the raster command.
+          // We can now safely send normal ESC/POS recovery commands.
           await new Promise(r => setTimeout(r, 100));
-          await this.ble.send(new Uint8Array([0x1b, 0x40])); // ESC @
+          await this.ble.send(new Uint8Array([0x1b, 0x40])); // ESC @ Hardware Reset
           
           await new Promise(r => setTimeout(r, 100));
           await this.ble.send(new Uint8Array([0x1b, 0x4a, 160])); // ESC J 160
           
+          await new Promise(r => setTimeout(r, 300));
         } catch (e) {
-          console.error('Failed to clear buffer after cancel', e);
+          console.error('Failed to recover printer after cancellation:', e);
         }
         
         this.updateStatus('Cancelled. Please tear off the strip.', true);
