@@ -59,16 +59,15 @@
             transform: scaleX(-1);
         }
 
-        /* Viewfinder framing box matching 2:3 print aspect ratio precisely */
+        /* Viewfinder framing box matching full screen width and 2:3 print aspect ratio */
         .viewfinder-overlay {
             position: absolute;
-            top: 45%;
+            top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: min(78%, 340px);
+            width: 100%;
             aspect-ratio: 2 / 3;
             border: 2px dashed rgba(255, 255, 255, 0.7);
-            border-radius: 12px;
             box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
             pointer-events: none;
             z-index: 5;
@@ -203,7 +202,7 @@
 
         .countdown {
             position: absolute;
-            top: 45%;
+            top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             font-size: 110px;
