@@ -10,9 +10,8 @@ export class PhotoboothApp {
   constructor(options = {}) {
     this.videoElement = this.resolveElement(options.videoElementId);
     this.startButton = this.resolveElement(options.startButtonId);
-    this.connectButton = this.resolveElement(options.connectButtonId);
-    this.statusButtonText = this.resolveElement(options.statusButtonTextId);
-    this.statusDot = this.resolveElement(options.statusDotId);
+    this.cancelButton = this.resolveElement(options.cancelButtonId);
+    this.reprintButton = this.resolveElement(options.reprintButtonId);
     this.statusElement = this.resolveElement(options.statusDisplayId);
     this.countdownElement = this.resolveElement(options.countdownElementId);
     this.flashElement = this.resolveElement(options.flashElementId);
@@ -20,15 +19,19 @@ export class PhotoboothApp {
     
     this.photoCount = 3;           
     this.printerWidthPx = 576;     
-    this.photoHeightPx = 864;      
+    this.photoHeightPx = 768;      // 3:4 Aspect ratio height (576 * 1.333)
     this.borderSize = 16;          
     this.bottomMargin = 160;       
-    this.cornerRadius = 32;        // 32px rounded corners for the printed photos
+    this.cornerRadius = 32;        
     this.countdownDuration = 3;    
-    this.capturedPhotos = [];
     
+    this.capturedPhotos = [];
+    this.lastRasterData = null;
     this.stream = null;
     this.isCapturing = false;
+    this.printCancelled = false;
+    this.statusTimeout = null;
+    
     this.ble = BLETransport.getShared();
     
     this.init();
@@ -60,70 +63,24 @@ export class PhotoboothApp {
       if (this.startButton) {
         this.startButton.addEventListener('click', () => this.startPhotoSession());
       }
-
-      if (this.connectButton) {
-        this.connectButton.addEventListener('click', () => this.togglePrinterConnection());
+      if (this.cancelButton) {
+        this.cancelButton.addEventListener('click', () => { this.printCancelled = true; });
+      }
+      if (this.reprintButton) {
+        this.reprintButton.addEventListener('click', () => this.handleReprint());
       }
       
-      this.updateConnectionUI(false);
-      this.updateStatus('Ready! Connect printer to begin.');
+      this.updateStatus('Ready! Tap Start to begin.');
+      this.hideStatusAfter(5000);
     } catch (error) {
       console.error('Camera access error:', error);
       this.updateStatus('Camera not available. Please check permissions.');
     }
   }
 
-  updateConnectionUI(connected, deviceName = '') {
-    if (this.statusDot) {
-      this.statusDot.classList.toggle('connected', connected);
-    }
-    
-    if (this.connectButton) {
-      if (connected) {
-        this.connectButton.classList.add('hidden');
-      } else {
-        this.connectButton.classList.remove('hidden');
-      }
-    }
-
-    if (this.statusButtonText) {
-      if (connected) {
-        const shortName = deviceName ? deviceName.substring(0, 10) : 'Printer';
-        this.statusButtonText.textContent = `Connected (${shortName})`;
-      } else {
-        this.statusButtonText.textContent = 'Connect Printer';
-      }
-    }
-  }
-
-  async togglePrinterConnection() {
-    try {
-      if (this.ble.isConnected()) {
-        await this.ble.disconnect();
-        this.updateConnectionUI(false);
-        this.updateStatus('Printer disconnected.');
-      } else {
-        this.updateStatus('Scanning for printer...');
-        await this.ble.connect();
-        if (this.ble.isConnected()) {
-          const name = this.ble.getDeviceName ? this.ble.getDeviceName() : 'Phomemo';
-          this.updateConnectionUI(true, name);
-          this.updateStatus('Printer connected successfully!');
-          setTimeout(() => this.hideStatus(), 3000);
-        }
-      }
-    } catch (error) {
-      console.error('Bluetooth connection error:', error);
-      this.updateStatus(`Connection failed: ${error.message}`);
-      this.updateConnectionUI(false);
-    }
-  }
-  
   updateStatus(message) {
     if (this.statusElement) {
       this.statusElement.textContent = message;
-      
-      // Force animation reflow
       this.statusElement.classList.remove('visible');
       void this.statusElement.offsetWidth;
       this.statusElement.classList.add('visible');
@@ -136,20 +93,24 @@ export class PhotoboothApp {
       this.statusElement.classList.remove('visible');
     }
   }
+
+  hideStatusAfter(ms) {
+    if (this.statusTimeout) clearTimeout(this.statusTimeout);
+    this.statusTimeout = setTimeout(() => this.hideStatus(), ms);
+  }
   
   async startPhotoSession() {
     if (this.isCapturing) return;
-    
     this.isCapturing = true;
     this.capturedPhotos = [];
+    
     this.startButton.disabled = true;
+    if (this.reprintButton) this.reprintButton.classList.add('hidden');
     
     try {
       if (!this.ble.isConnected()) {
         this.updateStatus('Please select your Phomemo printer...');
         await this.ble.connect();
-        const name = this.ble.getDeviceName ? this.ble.getDeviceName() : 'Phomemo';
-        this.updateConnectionUI(true, name);
       }
         
       this.updateStatus('Get ready!');
@@ -170,21 +131,96 @@ export class PhotoboothApp {
       }
       
       this.updateStatus('Processing image for printer...');
-      const rasterData = this.getRasterDataFromCanvas(compositeCanvas);
+      this.lastRasterData = this.getRasterDataFromCanvas(compositeCanvas);
       
-      this.updateStatus('Sending to printer...');
-      await print(this.ble, rasterData, { isBLE: true, continuous: true, feed: 100 });
-      
-      this.updateStatus('Complete! Grab your photos!');
-      setTimeout(() => this.hideStatus(), 4000);
+      await this.executePrint(this.lastRasterData);
       
     } catch (error) {
       console.error('Photo session error:', error);
       this.updateStatus(`Error: ${error.message}. Please try again.`);
-      setTimeout(() => this.hideStatus(), 5000);
+      this.hideStatusAfter(5000);
     } finally {
       this.isCapturing = false;
       this.startButton.disabled = false;
+    }
+  }
+
+  async handleReprint() {
+    if (!this.lastRasterData || this.isCapturing) return;
+    this.isCapturing = true;
+    this.startButton.disabled = true;
+    if (this.reprintButton) this.reprintButton.classList.add('hidden');
+
+    try {
+      if (!this.ble.isConnected()) {
+        this.updateStatus('Please select your Phomemo printer...');
+        await this.ble.connect();
+      }
+      await this.executePrint(this.lastRasterData);
+    } catch (error) {
+      console.error('Reprint error:', error);
+      this.updateStatus(`Error: ${error.message}. Please try again.`);
+      this.hideStatusAfter(5000);
+    } finally {
+      this.isCapturing = false;
+      this.startButton.disabled = false;
+    }
+  }
+
+  async executePrint(rasterData) {
+    this.printCancelled = false;
+    
+    if (this.cancelButton) this.cancelButton.classList.remove('hidden');
+    if (this.startButton) this.startButton.classList.add('hidden');
+    
+    try {
+      this.updateStatus('Sending to printer...');
+      
+      await print(this.ble, rasterData, { 
+        isBLE: true, 
+        continuous: true, 
+        feed: 120, 
+        onProgress: (progress) => {
+          if (this.printCancelled) {
+            throw new Error('CANCELLED');
+          }
+          this.updateStatus(`Printing... ${progress}%`);
+        }
+      });
+      
+      this.updateStatus('Complete! Please tear off your strip using the serrated teeth.');
+      this.hideStatusAfter(6000);
+      if (this.reprintButton) this.reprintButton.classList.remove('hidden');
+
+    } catch (error) {
+      if (error.message === 'CANCELLED') {
+        this.updateStatus('Print cancelled. Ejecting paper...');
+        try {
+          // Hardware Whisper: If a print is aborted midway, the printer freezes waiting for data.
+          // We must send an initialization command to wipe its memory, then manually feed the margin out.
+          await new Promise(r => setTimeout(r, 100));
+          await this.ble.send(new Uint8Array([0x1b, 0x40])); // ESC @ (Hardware Reset)
+          await new Promise(r => setTimeout(r, 100));
+          await this.ble.send(new Uint8Array([0x1b, 0x4a, 120])); // ESC J 120 (Feed Paper)
+        } catch (e) {
+          console.error('Failed to clear buffer after cancel', e);
+        }
+        
+        this.updateStatus('Cancelled. Please tear off the strip.');
+        this.hideStatusAfter(6000);
+        
+        // Show reprint button again so they don't lose the photo data
+        if (this.reprintButton && this.lastRasterData) {
+          this.reprintButton.classList.remove('hidden');
+        }
+      } else {
+        console.error('Print error:', error);
+        this.updateStatus(`Error: ${error.message}. Please try again.`);
+        this.hideStatusAfter(5000);
+      }
+    } finally {
+      if (this.cancelButton) this.cancelButton.classList.add('hidden');
+      if (this.startButton) this.startButton.classList.remove('hidden');
     }
   }
   
@@ -199,7 +235,6 @@ export class PhotoboothApp {
       
       const tick = () => {
         if (remaining > 0) {
-          // Force CSS animation restart for each number
           this.countdownElement.classList.remove('visible');
           void this.countdownElement.offsetWidth;
           this.countdownElement.classList.add('visible');
@@ -305,11 +340,9 @@ export class PhotoboothApp {
       
       ctx.save();
       
-      // Move to center, rotate 180 degrees
       ctx.translate(x + photoWidth / 2, y + photoHeight / 2);
       ctx.rotate(Math.PI);
       
-      // Create rounded rectangle clipping path centered at 0,0
       const hw = photoWidth / 2;
       const hh = photoHeight / 2;
       
@@ -325,10 +358,8 @@ export class PhotoboothApp {
       ctx.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
       ctx.closePath();
       
-      // Apply the clip
       ctx.clip();
       
-      // Draw image inside the clipped region
       ctx.drawImage(img, -hw, -hh, photoWidth, photoHeight);
       
       ctx.restore();
