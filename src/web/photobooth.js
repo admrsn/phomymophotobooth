@@ -1,6 +1,6 @@
 /**
  * Photobooth application for capturing and printing photo strips
- * Captures 5 photos with countdown, stitches them vertically with white borders
+ * Captures 3 photos with countdown, 2:3 aspect ratio, flash effect, and no side borders
  */
 
 import { BLETransport } from './ble.js';
@@ -16,16 +16,19 @@ export class PhotoboothApp {
     this.statusDot = this.resolveElement(options.statusDotId);
     this.statusElement = this.resolveElement(options.statusDisplayId);
     this.countdownElement = this.resolveElement(options.countdownElementId);
+    this.flashElement = this.resolveElement(options.flashElementId);
     this.compositeCanvasElement = this.resolveElement(options.compositeCanvasId);
     
-    this.photoCount = 5;
-    this.borderSize = 20; 
-    this.countdownDuration = 3; 
+    // Updated configurations based on your feedback
+    this.photoCount = 3;           // Reduced from 5 to 3
+    this.printerWidthPx = 576;     // Exact width matching 72 printer bytes (fixes wrap-around bug)
+    this.photoHeightPx = 864;      // 2:3 Aspect ratio height (576 * 1.5 = 864)
+    this.borderSize = 16;          // Vertical spacing between photos
+    this.countdownDuration = 3;    // Seconds
     this.capturedPhotos = [];
     
     this.stream = null;
     this.isCapturing = false;
-    
     this.ble = BLETransport.getShared();
     
     this.init();
@@ -63,7 +66,7 @@ export class PhotoboothApp {
       }
       
       this.updateConnectionUI(false);
-      this.updateStatus('Ready! Connect your printer to begin.');
+      this.updateStatus('Ready! Connect printer to begin.');
     } catch (error) {
       console.error('Camera access error:', error);
       this.updateStatus('Camera not available. Please check permissions.');
@@ -129,7 +132,6 @@ export class PhotoboothApp {
     this.startButton.disabled = true;
     
     try {
-      // If not connected, force connection prompt right on the user tap
       if (!this.ble.isConnected()) {
         this.updateStatus('Please select your Phomemo printer...');
         await this.ble.connect();
@@ -137,7 +139,7 @@ export class PhotoboothApp {
         this.updateConnectionUI(true, name);
       }
         
-      this.updateStatus('Starting photo session...');
+      this.updateStatus('Get ready!');
       
       for (let i = 0; i < this.photoCount; i++) {
         this.updateStatus(`Photo ${i + 1} of ${this.photoCount}`);
@@ -203,12 +205,40 @@ export class PhotoboothApp {
   
   capturePhoto() {
     return new Promise((resolve) => {
+      // Trigger camera flash effect
+      if (this.flashElement) {
+        this.flashElement.classList.add('flash');
+        setTimeout(() => {
+          this.flashElement.classList.remove('flash');
+        }, 120);
+      }
+
       const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = this.videoElement.videoWidth;
-      tempCanvas.height = this.videoElement.videoHeight;
+      tempCanvas.width = this.printerWidthPx;
+      tempCanvas.height = this.photoHeightPx;
       
       const ctx = tempCanvas.getContext('2d');
-      ctx.drawImage(this.videoElement, 0, 0);
+
+      // Smart center-crop from the 16:9 video stream to fit the 2:3 portrait slot
+      const videoWidth = this.videoElement.videoWidth;
+      const videoHeight = this.videoElement.videoHeight;
+      const targetAspect = this.printerWidthPx / this.photoHeightPx; // 2:3
+      const videoAspect = videoWidth / videoHeight;
+
+      let srcW = videoWidth;
+      let srcH = videoHeight;
+      let srcX = 0;
+      let srcY = 0;
+
+      if (videoAspect > targetAspect) {
+        srcW = videoHeight * targetAspect;
+        srcX = (videoWidth - srcW) / 2;
+      } else {
+        srcH = videoWidth / targetAspect;
+        srcY = (videoHeight - srcH) / 2;
+      }
+
+      ctx.drawImage(this.videoElement, srcX, srcY, srcW, srcH, 0, 0, this.printerWidthPx, this.photoHeightPx);
       
       const photoData = tempCanvas.toDataURL('image/jpeg', 0.9);
       this.capturedPhotos.push(photoData);
@@ -240,11 +270,12 @@ export class PhotoboothApp {
   }
   
   createComposite(photoImages) {
-    const photoWidth = photoImages[0].width;
-    const photoHeight = photoImages[0].height;
+    const photoWidth = this.printerWidthPx; // Exactly 576px
+    const photoHeight = this.photoHeightPx; // 864px (2:3 ratio)
     const border = this.borderSize;
     
-    const compositeWidth = photoWidth + (border * 2);
+    // No left/right padding—the composite width equals the printer stride width exactly (576px)
+    const compositeWidth = photoWidth; 
     const compositeHeight = (photoHeight * this.photoCount) + (border * (this.photoCount + 1));
     
     const compositeCanvas = document.createElement('canvas');
@@ -256,7 +287,7 @@ export class PhotoboothApp {
     ctx.fillRect(0, 0, compositeWidth, compositeHeight);
     
     photoImages.forEach((img, index) => {
-      const x = border;
+      const x = 0; // Flush to the left edge
       const y = border + (index * (photoHeight + border));
       ctx.drawImage(img, x, y, photoWidth, photoHeight);
     });
@@ -280,7 +311,7 @@ export class PhotoboothApp {
     const imageData = tempCtx.getImageData(0, 0, canvas.width, canvas.height);
     const pixels = imageData.data;
     
-    const printerWidthBytes = 72;
+    const printerWidthBytes = 72; // Exactly 72 bytes * 8 = 576 pixels
     const rasterData = renderer._pixelsToRaster(
       pixels,
       canvas.width,
