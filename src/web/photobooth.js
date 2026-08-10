@@ -1,6 +1,6 @@
 /**
  * Photobooth application for capturing and printing photo strips
- * Captures 3 photos with countdown, 2:3 aspect ratio, flash effect, and no side borders
+ * Features 3 photos, 2:3 ratio mapping, flash effect, clean control deck, and auto-hiding connection button
  */
 
 import { BLETransport } from './ble.js';
@@ -19,11 +19,10 @@ export class PhotoboothApp {
     this.flashElement = this.resolveElement(options.flashElementId);
     this.compositeCanvasElement = this.resolveElement(options.compositeCanvasId);
     
-    // Updated configurations based on your feedback
-    this.photoCount = 3;           // Reduced from 5 to 3
-    this.printerWidthPx = 576;     // Exact width matching 72 printer bytes (fixes wrap-around bug)
-    this.photoHeightPx = 864;      // 2:3 Aspect ratio height (576 * 1.5 = 864)
-    this.borderSize = 16;          // Vertical spacing between photos
+    this.photoCount = 3;           // Set to 3 photos per strip
+    this.printerWidthPx = 576;     // Matches 72 printer bytes (no side borders / wrap fix)
+    this.photoHeightPx = 864;      // 2:3 Aspect ratio height (576 * 1.5)
+    this.borderSize = 16;          // Vertical spacing between strips
     this.countdownDuration = 3;    // Seconds
     this.capturedPhotos = [];
     
@@ -77,6 +76,16 @@ export class PhotoboothApp {
     if (this.statusDot) {
       this.statusDot.classList.toggle('connected', connected);
     }
+    
+    if (this.connectButton) {
+      // Automatically hide the connect button once connected so guests can't click it
+      if (connected) {
+        this.connectButton.classList.add('hidden');
+      } else {
+        this.connectButton.classList.remove('hidden');
+      }
+    }
+
     if (this.statusButtonText) {
       if (connected) {
         const shortName = deviceName ? deviceName.substring(0, 10) : 'Printer';
@@ -205,12 +214,11 @@ export class PhotoboothApp {
   
   capturePhoto() {
     return new Promise((resolve) => {
-      // Trigger camera flash effect
+      // Trigger camera flash screen effect reliably via CSS animation class
       if (this.flashElement) {
+        this.flashElement.classList.remove('flash');
+        void this.flashElement.offsetWidth; // Force DOM reflow to re-trigger animation
         this.flashElement.classList.add('flash');
-        setTimeout(() => {
-          this.flashElement.classList.remove('flash');
-        }, 120);
       }
 
       const tempCanvas = document.createElement('canvas');
@@ -219,7 +227,7 @@ export class PhotoboothApp {
       
       const ctx = tempCanvas.getContext('2d');
 
-      // Smart center-crop from the 16:9 video stream to fit the 2:3 portrait slot
+      // Center-crop preview mapping precisely to the viewfinder box ratio
       const videoWidth = this.videoElement.videoWidth;
       const videoHeight = this.videoElement.videoHeight;
       const targetAspect = this.printerWidthPx / this.photoHeightPx; // 2:3
@@ -270,11 +278,10 @@ export class PhotoboothApp {
   }
   
   createComposite(photoImages) {
-    const photoWidth = this.printerWidthPx; // Exactly 576px
-    const photoHeight = this.photoHeightPx; // 864px (2:3 ratio)
+    const photoWidth = this.printerWidthPx; 
+    const photoHeight = this.photoHeightPx; 
     const border = this.borderSize;
     
-    // No left/right padding—the composite width equals the printer stride width exactly (576px)
     const compositeWidth = photoWidth; 
     const compositeHeight = (photoHeight * this.photoCount) + (border * (this.photoCount + 1));
     
@@ -287,7 +294,7 @@ export class PhotoboothApp {
     ctx.fillRect(0, 0, compositeWidth, compositeHeight);
     
     photoImages.forEach((img, index) => {
-      const x = 0; // Flush to the left edge
+      const x = 0; 
       const y = border + (index * (photoHeight + border));
       ctx.drawImage(img, x, y, photoWidth, photoHeight);
     });
@@ -311,7 +318,7 @@ export class PhotoboothApp {
     const imageData = tempCtx.getImageData(0, 0, canvas.width, canvas.height);
     const pixels = imageData.data;
     
-    const printerWidthBytes = 72; // Exactly 72 bytes * 8 = 576 pixels
+    const printerWidthBytes = 72;
     const rasterData = renderer._pixelsToRaster(
       pixels,
       canvas.width,
