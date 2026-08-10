@@ -168,32 +168,6 @@
                 opacity: 0.9;
             }
         }
-
-        /* Debug info (hidden by default, shown with ?debug query param) */
-        .debug-info {
-            position: absolute;
-            bottom: 10px;
-            right: 10px;
-            background: rgba(0, 0, 0, 0.7);
-            color: #0f0;
-            font-family: monospace;
-            font-size: 12px;
-            padding: 10px;
-            border-radius: 4px;
-            z-index: 100;
-            display: none;
-            max-width: 300px;
-            max-height: 200px;
-            overflow-y: auto;
-        }
-
-        .debug-info.visible {
-            display: block;
-        }
-
-        .debug-info-line {
-            margin: 2px 0;
-        }
     </style>
 </head>
 <body>
@@ -210,9 +184,6 @@
                     <button id="start-button">START</button>
                 </div>
             </div>
-
-            <!-- Debug Info -->
-            <div class="debug-info" id="debug-info"></div>
         </div>
     </div>
 
@@ -222,7 +193,7 @@
     <!-- Import existing Phomymo modules -->
     <script type="module">
         import { BLETransport } from './ble.js';
-        import { Printer } from './printer.js';
+        import { PrinterProtocol } from './printer.js';
         import { PhotoboothApp } from './photobooth.js';
 
         // Initialize the photobooth application
@@ -231,14 +202,13 @@
             startButtonId: 'start-button',
             countdownElementId: 'countdown',
             statusDisplayId: 'status-display',
-            compositeCanvasId: 'composite-canvas',
-            debugInfoId: 'debug-info',
+            compositeCanvasId: 'composite-canvas'
         });
 
         // Make app globally available for debugging
         window.photoboothApp = app;
         window.BLETransport = BLETransport;
-        window.Printer = Printer;
+        window.PrinterProtocol = PrinterProtocol;
     </script>
 </body>
 </html>
