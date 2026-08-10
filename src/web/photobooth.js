@@ -5,7 +5,7 @@
 
 import { BLETransport } from './ble.js';
 import { CanvasRenderer, PX_PER_MM } from './canvas.js';
-import { Printer } from './printer.js';
+import { print } from './printer.js';
 
 export class PhotoboothApp {
   constructor(options = {}) {
@@ -28,7 +28,6 @@ export class PhotoboothApp {
     
     // Bluetooth and printer
     this.ble = BLETransport.getShared();
-    this.printer = null;
     
     this.init();
   }
@@ -122,14 +121,9 @@ export class PhotoboothApp {
       this.updateStatus('Processing image for printer...');
       const rasterData = this.getRasterDataFromCanvas(compositeCanvas);
       
-      // Initialize printer if needed
-      if (!this.printer) {
-        this.printer = new Printer(this.ble);
-      }
-      
-      // Send to printer
+      // Send to printer using the correct function signature from printer.js
       this.updateStatus('Sending to printer...');
-      await this.printer.printRaster(rasterData.data, rasterData.widthBytes, rasterData.heightLines);
+      await print(this.ble, rasterData, { isBLE: true, continuous: true });
       
       this.updateStatus('Complete! Strip printed successfully.');
     } catch (error) {
@@ -228,11 +222,6 @@ export class PhotoboothApp {
     const border = this.borderSize;
     
     // Calculate composite canvas size
-    // Layout: [border][photo][border]
-    //         [border][photo][border]
-    //         ... (5 times)
-    // Total: width = photo_width + 2*border
-    //        height = (5 * photo_height) + (6 * border) [top, bottom, and between each]
     const compositeWidth = photoWidth + (border * 2);
     const compositeHeight = (photoHeight * this.photoCount) + (border * (this.photoCount + 1));
     
@@ -265,9 +254,6 @@ export class PhotoboothApp {
     const tempCanvas = document.createElement('canvas');
     const renderer = new CanvasRenderer(tempCanvas);
     
-    // Set dimensions to match our composite
-    // The composite is already at print resolution, so we need to account for that
-    // Assuming PX_PER_MM = 8 (203 DPI), our canvas size is in pixels
     const widthMm = canvas.width / PX_PER_MM;
     const heightMm = canvas.height / PX_PER_MM;
     
@@ -282,7 +268,6 @@ export class PhotoboothApp {
     const imageData = tempCtx.getImageData(0, 0, canvas.width, canvas.height);
     const pixels = imageData.data;
     
-    // Convert to raster using dithering (Floyd-Steinberg for best quality)
     // Use printer width of 72 bytes (576 pixels, typical for thermal printers)
     const printerWidthBytes = 72;
     const rasterData = renderer._pixelsToRaster(
