@@ -9,24 +9,23 @@ import { print } from './printer.js';
 
 export class PhotoboothApp {
   constructor(options = {}) {
-    // Resolve element IDs to actual DOM elements
     this.videoElement = this.resolveElement(options.videoElementId);
     this.startButton = this.resolveElement(options.startButtonId);
+    this.connectButton = this.resolveElement(options.connectButtonId);
+    this.statusButtonText = this.resolveElement(options.statusButtonTextId);
+    this.statusDot = this.resolveElement(options.statusDotId);
     this.statusElement = this.resolveElement(options.statusDisplayId);
     this.countdownElement = this.resolveElement(options.countdownElementId);
     this.compositeCanvasElement = this.resolveElement(options.compositeCanvasId);
     
-    // Photo capture settings
     this.photoCount = 5;
-    this.borderSize = 20; // pixels (white border around and between photos)
-    this.countdownDuration = 3; // seconds
+    this.borderSize = 20; 
+    this.countdownDuration = 3; 
     this.capturedPhotos = [];
     
-    // Camera stream
     this.stream = null;
     this.isCapturing = false;
     
-    // Bluetooth and printer
     this.ble = BLETransport.getShared();
     
     this.init();
@@ -42,7 +41,6 @@ export class PhotoboothApp {
   
   async init() {
     try {
-      // Request camera access (front-facing for selfies)
       this.stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'user',
@@ -51,30 +49,76 @@ export class PhotoboothApp {
         }
       });
       
-      // Pipe stream to video element
       if (this.videoElement) {
         this.videoElement.srcObject = this.stream;
         this.videoElement.play();
       }
       
-      // Set up button handler
       if (this.startButton) {
         this.startButton.addEventListener('click', () => this.startPhotoSession());
       }
+
+      if (this.connectButton) {
+        this.connectButton.addEventListener('click', () => this.togglePrinterConnection());
+      }
       
-      this.updateStatus('Ready! Tap Start to begin.');
+      this.updateConnectionUI(false);
+      this.updateStatus('Ready! Connect your printer to begin.');
     } catch (error) {
-      console.error('Camera access denied or unavailable:', error);
-      this.updateStatus('Camera not available. Please enable camera access.');
+      console.error('Camera access error:', error);
+      this.updateStatus('Camera not available. Please check permissions.');
+    }
+  }
+
+  updateConnectionUI(connected, deviceName = '') {
+    if (this.statusDot) {
+      this.statusDot.classList.toggle('connected', connected);
+    }
+    if (this.statusButtonText) {
+      if (connected) {
+        const shortName = deviceName ? deviceName.substring(0, 10) : 'Printer';
+        this.statusButtonText.textContent = `Connected (${shortName})`;
+      } else {
+        this.statusButtonText.textContent = 'Connect Printer';
+      }
+    }
+  }
+
+  async togglePrinterConnection() {
+    try {
+      if (this.ble.isConnected()) {
+        await this.ble.disconnect();
+        this.updateConnectionUI(false);
+        this.updateStatus('Printer disconnected.');
+      } else {
+        this.updateStatus('Scanning for printer...');
+        await this.ble.connect();
+        if (this.ble.isConnected()) {
+          const name = this.ble.getDeviceName ? this.ble.getDeviceName() : 'Phomemo';
+          this.updateConnectionUI(true, name);
+          this.updateStatus('Printer connected successfully!');
+          setTimeout(() => this.hideStatus(), 3000);
+        }
+      }
+    } catch (error) {
+      console.error('Bluetooth connection error:', error);
+      this.updateStatus(`Connection failed: ${error.message}`);
+      this.updateConnectionUI(false);
     }
   }
   
   updateStatus(message) {
     if (this.statusElement) {
       this.statusElement.textContent = message;
-      this.statusElement.classList.add('visible'); // Added missing CSS class!
+      this.statusElement.classList.add('visible');
     }
     console.log('[Photobooth]', message);
+  }
+
+  hideStatus() {
+    if (this.statusElement) {
+      this.statusElement.classList.remove('visible');
+    }
   }
   
   async startPhotoSession() {
@@ -85,26 +129,25 @@ export class PhotoboothApp {
     this.startButton.disabled = true;
     
     try {
-      // 1. Connect to printer FIRST to satisfy Web Bluetooth user-gesture requirements
+      // If not connected, force connection prompt right on the user tap
       if (!this.ble.isConnected()) {
-        this.updateStatus('Connecting to printer...');
+        this.updateStatus('Please select your Phomemo printer...');
         await this.ble.connect();
+        const name = this.ble.getDeviceName ? this.ble.getDeviceName() : 'Phomemo';
+        this.updateConnectionUI(true, name);
       }
         
       this.updateStatus('Starting photo session...');
       
-      // 2. Capture 5 photos
       for (let i = 0; i < this.photoCount; i++) {
         this.updateStatus(`Photo ${i + 1} of ${this.photoCount}`);
         await this.showCountdown();
         await this.capturePhoto();
       }
       
-      // 3. All photos captured - stitch them
       this.updateStatus('Stitching photos...');
       const compositeCanvas = await this.stitchPhotos();
       
-      // Display composite on screen if element provided
       if (this.compositeCanvasElement) {
         const ctx = this.compositeCanvasElement.getContext('2d');
         this.compositeCanvasElement.width = compositeCanvas.width;
@@ -115,25 +158,16 @@ export class PhotoboothApp {
       this.updateStatus('Processing image for printer...');
       const rasterData = this.getRasterDataFromCanvas(compositeCanvas);
       
-      // 4. Send to printer using the correct function signature from printer.js
       this.updateStatus('Sending to printer...');
       await print(this.ble, rasterData, { isBLE: true, continuous: true });
       
       this.updateStatus('Complete! Strip printed successfully.');
-      
-      // Hide status after success
-      setTimeout(() => {
-          if (this.statusElement) this.statusElement.classList.remove('visible');
-      }, 4000);
+      setTimeout(() => this.hideStatus(), 4000);
       
     } catch (error) {
       console.error('Photo session error:', error);
       this.updateStatus(`Error: ${error.message}. Please try again.`);
-      
-      // Hide error after 5 seconds so user can try again
-      setTimeout(() => {
-          if (this.statusElement) this.statusElement.classList.remove('visible');
-      }, 5000);
+      setTimeout(() => this.hideStatus(), 5000);
     } finally {
       this.isCapturing = false;
       this.startButton.disabled = false;
@@ -179,7 +213,6 @@ export class PhotoboothApp {
       const photoData = tempCanvas.toDataURL('image/jpeg', 0.9);
       this.capturedPhotos.push(photoData);
       
-      console.log(`Captured photo ${this.capturedPhotos.length}/${this.photoCount}`);
       setTimeout(resolve, 500);
     });
   }
@@ -207,10 +240,6 @@ export class PhotoboothApp {
   }
   
   createComposite(photoImages) {
-    if (!photoImages || photoImages.length === 0) {
-      throw new Error('No photos to stitch');
-    }
-    
     const photoWidth = photoImages[0].width;
     const photoHeight = photoImages[0].height;
     const border = this.borderSize;
@@ -223,14 +252,12 @@ export class PhotoboothApp {
     compositeCanvas.height = compositeHeight;
     
     const ctx = compositeCanvas.getContext('2d');
-    
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, compositeWidth, compositeHeight);
     
     photoImages.forEach((img, index) => {
       const x = border;
       const y = border + (index * (photoHeight + border));
-      
       ctx.drawImage(img, x, y, photoWidth, photoHeight);
     });
     
@@ -241,10 +268,8 @@ export class PhotoboothApp {
     const tempCanvas = document.createElement('canvas');
     const renderer = new CanvasRenderer(tempCanvas);
     
-    // 203 DPI thermal printers are exactly 8 dots per mm
     const widthMm = Math.round(canvas.width / 8);
     const heightMm = Math.round(canvas.height / 8);
-    
     renderer.setDimensions(widthMm, heightMm, 1, false);
     
     const tempCtx = document.createElement('canvas').getContext('2d');
@@ -255,7 +280,7 @@ export class PhotoboothApp {
     const imageData = tempCtx.getImageData(0, 0, canvas.width, canvas.height);
     const pixels = imageData.data;
     
-    const printerWidthBytes = 72; // 576 pixels wide
+    const printerWidthBytes = 72;
     const rasterData = renderer._pixelsToRaster(
       pixels,
       canvas.width,
