@@ -31,7 +31,7 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background-color: #0b0f19;
+            background-color: #000;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
 
@@ -45,43 +45,36 @@
         .photobooth-container {
             width: 100%;
             height: 100%;
-            display: flex;
-            flex-direction: column;
             position: relative;
-        }
-
-        /* Top video preview area filling screen height */
-        .video-preview-area {
-            flex: 1;
-            width: 100%;
-            position: relative;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             background: #000;
+            overflow: hidden;
         }
 
         #camera-feed {
+            position: absolute;
+            inset: 0;
             width: 100%;
             height: 100%;
             object-fit: cover;
             transform: scaleX(-1); /* Mirror front camera */
         }
 
-        /* 2:3 Print Bounding Box Overlay */
+        /* 2:3 Print Bounding Box Overlay centered on screen */
         .viewfinder-overlay {
             position: absolute;
-            width: min(82%, 360px);
+            top: 45%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: min(78%, 340px);
             aspect-ratio: 2 / 3;
-            border: 2px dashed rgba(255, 255, 255, 0.6);
-            border-radius: 8px;
-            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); /* Darkens everything outside print ratio */
+            border: 2px dashed rgba(255, 255, 255, 0.7);
+            border-radius: 12px;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45); /* Dims outside area */
             pointer-events: none;
             z-index: 5;
         }
 
-        /* Reliable Camera Flash Animation Overlay */
+        /* Camera Flash Animation Overlay */
         .flash-overlay {
             position: absolute;
             inset: 0;
@@ -98,31 +91,40 @@
             100% { opacity: 0; }
         }
 
-        /* Dedicated bottom control panel in the non-printed blank space */
-        .control-panel {
-            height: 110px;
-            background-color: #111827;
+        /* UI Layer overlaying the full screen video */
+        .ui-layer {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            pointer-events: none;
+            padding: 30px 20px 45px 20px;
+            z-index: 20;
+        }
+
+        .button-area {
+            pointer-events: auto;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 16px;
-            padding: 0 20px;
-            z-index: 20;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            gap: 12px;
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto;
         }
 
         #start-button {
             flex: 1;
-            max-width: 280px;
-            height: 60px;
-            font-size: 22px;
+            height: 56px;
+            font-size: 20px;
             font-weight: bold;
             background-color: #2563eb;
             color: white;
             border: none;
             border-radius: 14px;
             cursor: pointer;
-            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+            box-shadow: 0 4px 16px rgba(37, 99, 235, 0.5);
             transition: all 0.15s ease;
             touch-action: manipulation;
         }
@@ -138,18 +140,19 @@
         }
 
         #connect-printer-btn {
-            height: 60px;
-            padding: 0 20px;
-            font-size: 15px;
+            height: 56px;
+            padding: 0 18px;
+            font-size: 14px;
             font-weight: 600;
-            background-color: #374151;
+            background-color: rgba(17, 24, 39, 0.85);
             color: white;
-            border: none;
+            border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 14px;
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
+            backdrop-filter: blur(4px);
             transition: all 0.15s ease;
             touch-action: manipulation;
         }
@@ -158,14 +161,13 @@
             transform: scale(0.97);
         }
 
-        /* Utility class to hide elements securely */
         .hidden {
             display: none !important;
         }
 
         .status-dot {
-            width: 10px;
-            height: 10px;
+            width: 9px;
+            height: 9px;
             border-radius: 50%;
             background-color: #9ca3af;
             display: inline-block;
@@ -178,7 +180,7 @@
 
         .status-display {
             position: absolute;
-            top: 15px;
+            top: 20px;
             left: 50%;
             transform: translateX(-50%);
             padding: 10px 20px;
@@ -186,13 +188,13 @@
             font-size: 15px;
             font-weight: 500;
             text-align: center;
-            z-index: 30;
             background-color: rgba(17, 24, 39, 0.85);
             border-radius: 30px;
             backdrop-filter: blur(4px);
             border: 1px solid rgba(255, 255, 255, 0.15);
             display: none;
             pointer-events: none;
+            z-index: 30;
         }
 
         .status-display.visible {
@@ -201,49 +203,46 @@
 
         .countdown {
             position: absolute;
-            top: 50%;
+            top: 45%;
             left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 120px;
+            font-size: 110px;
             font-weight: bold;
             color: white;
             text-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
             z-index: 25;
             display: none;
             pointer-events: none;
-            animation: pulse-scale 1s ease-out infinite;
         }
 
         .countdown.visible {
             display: block;
         }
-
-        @keyframes pulse-scale {
-            0% { transform: translate(-50%, -50%) scale(1.1); opacity: 0.9; }
-            50% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-            100% { transform: translate(-50%, -50%) scale(1.1); opacity: 0.9; }
-        }
     </style>
 </head>
 <body>
     <div class="photobooth-container">
-        <!-- Full-screen video preview background with 2:3 print crop box overlay -->
-        <div class="video-preview-area">
-            <video id="camera-feed" playsinline autoplay muted></video>
-            <div class="viewfinder-overlay"></div>
-            <div id="flash-overlay" class="flash-overlay"></div>
+        <!-- Full screen background video feed -->
+        <video id="camera-feed" playsinline autoplay muted></video>
+        
+        <!-- Viewfinder bounding box showing exact print area -->
+        <div class="viewfinder-overlay"></div>
+        
+        <!-- Flash effect overlay -->
+        <div id="flash-overlay" class="flash-overlay"></div>
 
-            <div class="status-display" id="status-display"></div>
-            <div class="countdown" id="countdown"></div>
-        </div>
+        <div class="status-display" id="status-display"></div>
+        <div class="countdown" id="countdown"></div>
 
-        <!-- Buttons safely housed below in the non-printed space -->
-        <div class="control-panel">
-            <button id="connect-printer-btn">
-                <span id="status-dot" class="status-dot"></span>
-                <span id="connect-btn-text">Connect Printer</span>
-            </button>
-            <button id="start-button">START</button>
+        <!-- Buttons overlaid on top of video, positioned below the box -->
+        <div class="ui-layer">
+            <div class="button-area">
+                <button id="connect-printer-btn">
+                    <span id="status-dot" class="status-dot"></span>
+                    <span id="connect-btn-text">Connect Printer</span>
+                </button>
+                <button id="start-button">START</button>
+            </div>
         </div>
     </div>
 
