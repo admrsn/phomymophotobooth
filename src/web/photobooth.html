@@ -7,6 +7,21 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Phomymo Photobooth</title>
+    <script>
+    window.onerror = function(message, source, lineno, colno, error) {
+        const errorBox = document.createElement('div');
+        errorBox.style.cssText = 'position:absolute; top:10%; left:5%; right:5%; background:#dc2626; color:white; padding:20px; z-index:9999; word-wrap:break-word; font-size:18px; border-radius:12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);';
+        errorBox.innerHTML = '<strong>CRASH REPORT:</strong><br><br>' + message + '<br><br><strong>Line:</strong> ' + lineno;
+        
+        // Wait for the body to load if it hasn't already
+        if (document.body) {
+            document.body.appendChild(errorBox);
+        } else {
+            window.addEventListener('DOMContentLoaded', () => document.body.appendChild(errorBox));
+        }
+        return true;
+    };
+</script>
     <style>
         * {
             margin: 0;
