@@ -19,7 +19,7 @@ export class PhotoboothApp {
     
     this.photoCount = 3;           
     this.printerWidthPx = 576;     
-    this.photoHeightPx = 768;      
+    this.photoHeightPx = 768;      // 3:4 Aspect ratio height
     this.borderSize = 16;          
     this.bottomMargin = 160;       
     this.cornerRadius = 32;        
@@ -65,6 +65,7 @@ export class PhotoboothApp {
       }
       if (this.cancelButton) {
         this.cancelButton.addEventListener('click', () => { 
+          // Flag the cancellation to break the print loop instantly
           this.printCancelled = true; 
         });
       }
@@ -121,7 +122,6 @@ export class PhotoboothApp {
         
       this.updateStatus('Get ready!', true);
       
-      // Flash "Smile!" brightly on screen right before the countdown sequence starts
       await this.showScreenMessage('Smile!', 1500);
       
       for (let i = 0; i < this.photoCount; i++) {
@@ -205,26 +205,33 @@ export class PhotoboothApp {
       if (error.message === 'CANCELLED') {
         this.updateStatus('Print cancelled. Ejecting paper...', true);
         try {
+          // HARDWARE WHISPER: When we abort the print loop, the printer is left hanging 
+          // halfway through a 255-line chunk, starving for bytes. If we send commands now, 
+          // they get absorbed as pixels, corrupting the horizontal alignment!
+          // FIX: We flood the printer with exactly one max-chunk of zeros (18,360 bytes).
+          // It absorbs exactly what it needs to finish the block (feeding blank paper),
+          // natively resets its column alignment, and ignores the leftover zeros.
+          const flushData = new Uint8Array(18360); // 255 lines * 72 bytes
+          
+          const sendData = async (data) => {
+            if (this.ble.send) await this.ble.send(data);
+            else if (this.ble.write) await this.ble.write(data);
+          };
+
+          // Send in chunks so we don't blow out the BLE MTU limit
+          for (let i = 0; i < flushData.length; i += 512) {
+              await sendData(flushData.slice(i, i + 512));
+              await new Promise(r => setTimeout(r, 10)); 
+          }
+          
+          // Now the printer is safely back in command mode with a clean byte alignment. Hard reset it.
           await new Promise(r => setTimeout(r, 200));
-          await this.ble.send(new Uint8Array([0x1b, 0x40])); 
-          await new Promise(r => setTimeout(r, 400)); 
-
-          const blankCanvas = document.createElement('canvas');
-          blankCanvas.width = this.printerWidthPx;
-          blankCanvas.height = 8;
-          const ctx = blankCanvas.getContext('2d');
-          ctx.fillStyle = 'white';
-          ctx.fillRect(0, 0, blankCanvas.width, blankCanvas.height);
+          await sendData(new Uint8Array([0x1b, 0x40])); // ESC @
           
-          const blankRaster = this.getRasterDataFromCanvas(blankCanvas);
+          // Feed a final clean margin so it clears the cutter
+          await new Promise(r => setTimeout(r, 100));
+          await sendData(new Uint8Array([0x1b, 0x4a, 120])); // ESC J 120
           
-          await print(this.ble, blankRaster, { 
-              isBLE: true, 
-              continuous: true, 
-              feed: 160,
-              onProgress: () => {} 
-          });
-
         } catch (e) {
           console.error('Failed to clear buffer after cancel', e);
         }
@@ -232,6 +239,7 @@ export class PhotoboothApp {
         this.updateStatus('Cancelled. Please tear off the strip.', true);
         this.hideStatusAfter(6000);
         
+        // Show reprint button again so they don't lose the photo data if it was an accidental cancel
         if (this.reprintButton && this.lastRasterData) {
           this.reprintButton.classList.remove('hidden');
         }
@@ -253,7 +261,6 @@ export class PhotoboothApp {
         return;
       }
 
-      // Temporarily shrink font size so words don't overflow the screen
       this.countdownElement.style.fontSize = '80px'; 
       this.countdownElement.classList.remove('visible');
       void this.countdownElement.offsetWidth;
@@ -264,7 +271,7 @@ export class PhotoboothApp {
       setTimeout(() => {
         this.countdownElement.classList.remove('visible');
         this.countdownElement.textContent = '';
-        this.countdownElement.style.fontSize = ''; // Restore default CSS size
+        this.countdownElement.style.fontSize = ''; 
         resolve();
       }, durationMs);
     });
