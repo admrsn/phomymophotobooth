@@ -7,10 +7,14 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Phomymo Photobooth</title>
+    
+    <!-- Import a fun, rounded modern font -->
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;900&display=swap" rel="stylesheet">
+
     <script>
     window.onerror = function(message, source, lineno, colno, error) {
         const errorBox = document.createElement('div');
-        errorBox.style.cssText = 'position:absolute; top:10%; left:5%; right:5%; background:#dc2626; color:white; padding:20px; z-index:9999; word-wrap:break-word; font-size:18px; border-radius:12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);';
+        errorBox.style.cssText = 'position:absolute; top:10%; left:5%; right:5%; background:#dc2626; color:white; padding:20px; z-index:9999; word-wrap:break-word; font-size:18px; border-radius:12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); font-family:"Nunito", sans-serif;';
         errorBox.innerHTML = '<strong>CRASH REPORT:</strong><br><br>' + message + '<br><br><strong>Line:</strong> ' + lineno;
         if (document.body) {
             document.body.appendChild(errorBox);
@@ -31,8 +35,8 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background-color: #000;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background-color: #1a0b14; /* Deep warm tint for edges */
+            font-family: 'Nunito', -apple-system, BlinkMacSystemFont, sans-serif;
         }
 
         body {
@@ -59,7 +63,7 @@
             transform: scaleX(-1);
         }
 
-        /* Viewfinder framing box matching full screen width and 2:3 print aspect ratio */
+        /* Viewfinder with rounded corners to match the printed output */
         .viewfinder-overlay {
             position: absolute;
             top: 50%;
@@ -68,13 +72,13 @@
             width: 100vw;
             max-width: 100%;
             aspect-ratio: 2 / 3;
-            border: 2px dashed rgba(255, 255, 255, 0.7);
+            border: 3px dashed rgba(255, 255, 255, 0.8);
+            border-radius: 20px; /* Visually matches the 32px print radius */
             box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
             pointer-events: none;
             z-index: 5;
         }
 
-        /* Camera Flash Animation Overlay */
         .flash-overlay {
             position: absolute;
             inset: 0;
@@ -84,14 +88,13 @@
             z-index: 50;
         }
         .flash-overlay.flash {
-            animation: camera-flash 0.25s ease-out;
+            animation: camera-flash 0.3s ease-out;
         }
         @keyframes camera-flash {
             0% { opacity: 1; }
             100% { opacity: 0; }
         }
 
-        /* UI Layer overlaying the full screen video */
         .ui-layer {
             position: absolute;
             inset: 0;
@@ -99,7 +102,7 @@
             flex-direction: column;
             justify-content: flex-end;
             pointer-events: none;
-            padding: 30px 20px 45px 20px;
+            padding: 30px 20px 50px 20px;
             z-index: 20;
         }
 
@@ -114,51 +117,65 @@
             margin: 0 auto;
         }
 
+        /* Fun, Party-Themed Start Button */
         #start-button {
             flex: 1;
-            height: 56px;
-            font-size: 20px;
-            font-weight: bold;
-            background-color: #2563eb;
+            height: 64px;
+            font-size: 24px;
+            font-weight: 900;
+            background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
             color: white;
             border: none;
-            border-radius: 14px;
+            border-radius: 20px;
             cursor: pointer;
-            box-shadow: 0 4px 16px rgba(37, 99, 235, 0.5);
-            transition: all 0.15s ease;
+            box-shadow: 0 6px 20px rgba(255, 65, 108, 0.5);
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             touch-action: manipulation;
+            letter-spacing: 1px;
         }
 
-        #start-button:active {
-            transform: scale(0.97);
+        /* Pulsing effect to invite tapping */
+        @keyframes pulse-btn {
+            0% { box-shadow: 0 0 0 0 rgba(255, 65, 108, 0.6); }
+            70% { box-shadow: 0 0 0 15px rgba(255, 65, 108, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 65, 108, 0); }
+        }
+        #start-button:not(:disabled) {
+            animation: pulse-btn 2.5s infinite;
+        }
+
+        #start-button:active:not(:disabled) {
+            transform: scale(0.94);
         }
 
         #start-button:disabled {
-            background-color: #4b5563;
+            background: #4b5563;
+            color: #9ca3af;
             cursor: not-allowed;
+            animation: none;
             box-shadow: none;
         }
 
         #connect-printer-btn {
-            height: 56px;
-            padding: 0 18px;
-            font-size: 14px;
-            font-weight: 600;
-            background-color: rgba(17, 24, 39, 0.85);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 14px;
+            height: 64px;
+            padding: 0 20px;
+            font-size: 16px;
+            font-weight: 700;
+            background-color: rgba(255, 255, 255, 0.95);
+            color: #ff416c;
+            border: none;
+            border-radius: 20px;
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 8px;
-            backdrop-filter: blur(4px);
-            transition: all 0.15s ease;
+            gap: 10px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             touch-action: manipulation;
         }
 
         #connect-printer-btn:active {
-            transform: scale(0.97);
+            transform: scale(0.94);
         }
 
         .hidden {
@@ -166,32 +183,33 @@
         }
 
         .status-dot {
-            width: 9px;
-            height: 9px;
+            width: 12px;
+            height: 12px;
             border-radius: 50%;
-            background-color: #9ca3af;
+            background-color: #cbd5e1;
             display: inline-block;
         }
 
         .status-dot.connected {
             background-color: #22c55e;
-            box-shadow: 0 0 8px #22c55e;
+            box-shadow: 0 0 10px #22c55e;
         }
 
         .status-display {
             position: absolute;
-            top: 20px;
+            top: 30px;
             left: 50%;
             transform: translateX(-50%);
-            padding: 10px 20px;
+            padding: 12px 24px;
             color: white;
-            font-size: 15px;
-            font-weight: 500;
+            font-size: 16px;
+            font-weight: 700;
             text-align: center;
-            background-color: rgba(17, 24, 39, 0.85);
+            background-color: rgba(255, 65, 108, 0.9);
             border-radius: 30px;
-            backdrop-filter: blur(4px);
-            border: 1px solid rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(8px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
             display: none;
             pointer-events: none;
             z-index: 30;
@@ -199,6 +217,12 @@
 
         .status-display.visible {
             display: block;
+            animation: slide-down 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes slide-down {
+            0% { transform: translate(-50%, -20px); opacity: 0; }
+            100% { transform: translate(-50%, 0); opacity: 1; }
         }
 
         .countdown {
@@ -206,10 +230,10 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 110px;
-            font-weight: bold;
+            font-size: 140px;
+            font-weight: 900;
             color: white;
-            text-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
+            text-shadow: 0 8px 30px rgba(255, 65, 108, 0.8);
             z-index: 25;
             display: none;
             pointer-events: none;
@@ -217,6 +241,16 @@
 
         .countdown.visible {
             display: block;
+            animation: bouncy-count 1s cubic-bezier(0.175, 0.885, 0.32, 1.275) infinite;
+        }
+
+        /* Energetic, bouncy countdown animation */
+        @keyframes bouncy-count {
+            0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+            30% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+            50% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            90% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
         }
     </style>
 </head>
