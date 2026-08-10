@@ -27,7 +27,6 @@ export class PhotoboothApp {
     
     this.capturedPhotos = [];
     this.lastRasterData = null;
-    this.activePrintData = null;   // Holds the cloned data we can wipe on cancel
     this.stream = null;
     this.isCapturing = false;
     this.printCancelled = false;
@@ -66,12 +65,8 @@ export class PhotoboothApp {
       }
       if (this.cancelButton) {
         this.cancelButton.addEventListener('click', () => { 
+          // Flag the cancellation to break the loop instantly
           this.printCancelled = true; 
-          if (this.activePrintData) {
-            // Instantly fill the rest of the print buffer with 0s (white space).
-            // This forces the printer to eject the paper instead of hanging.
-            this.activePrintData.fill(0);
-          }
         });
       }
       if (this.reprintButton) {
@@ -86,13 +81,12 @@ export class PhotoboothApp {
     }
   }
 
-  // Added 'animate' parameter to prevent flashing during percentage updates
   updateStatus(message, animate = true) {
     if (this.statusElement) {
       this.statusElement.textContent = message;
       if (animate) {
         this.statusElement.classList.remove('visible');
-        void this.statusElement.offsetWidth; // Force reflow
+        void this.statusElement.offsetWidth; 
         this.statusElement.classList.add('visible');
       } else if (!this.statusElement.classList.contains('visible')) {
         this.statusElement.classList.add('visible');
@@ -182,15 +176,6 @@ export class PhotoboothApp {
 
   async executePrint(rasterData) {
     this.printCancelled = false;
-    
-    // Clone the data array so if we wipe it on cancel, we don't ruin the RE-PRINT data
-    this.activePrintData = new Uint8Array(rasterData.data);
-    
-    const printPayload = {
-      data: this.activePrintData,
-      widthBytes: rasterData.widthBytes,
-      heightLines: rasterData.heightLines
-    };
 
     if (this.cancelButton) this.cancelButton.classList.remove('hidden');
     if (this.startButton) this.startButton.classList.add('hidden');
@@ -198,34 +183,48 @@ export class PhotoboothApp {
     try {
       this.updateStatus('Sending to printer...', true);
       
-      await print(this.ble, printPayload, { 
+      await print(this.ble, rasterData, { 
         isBLE: true, 
         continuous: true, 
         feed: 120, 
         onProgress: (progress) => {
-          // Send false so it updates text smoothly without flashing
           if (this.printCancelled) {
-            this.updateStatus(`Cancelling & Ejecting... ${progress}%`, false);
-          } else {
-            this.updateStatus(`Printing... ${progress}%`, false);
+            // Throwing an error here instantly breaks the print loop in printer.js
+            throw new Error('CANCELLED');
           }
+          this.updateStatus(`Printing... ${progress}%`, false);
         }
       });
       
-      // Let the loop finish gracefully, then update final status
-      if (this.printCancelled) {
-        this.updateStatus('Print cancelled. Please tear off the strip.', true);
-      } else {
-        this.updateStatus('Complete! Please tear off your strip using the serrated teeth.', true);
-      }
-      
+      this.updateStatus('Complete! Please tear off your strip using the serrated teeth.', true);
       this.hideStatusAfter(6000);
       if (this.reprintButton) this.reprintButton.classList.remove('hidden');
 
     } catch (error) {
-      console.error('Print error:', error);
-      this.updateStatus(`Error: ${error.message}. Please try again.`, true);
-      this.hideStatusAfter(5000);
+      if (error.message === 'CANCELLED') {
+        this.updateStatus('Print cancelled. Ejecting paper...', true);
+        try {
+          // Hardware Whisper: Instantly wipe the printer's memory buffer and manually feed paper
+          await new Promise(r => setTimeout(r, 100));
+          await this.ble.send(new Uint8Array([0x1b, 0x40])); // ESC @ (Hardware Reset)
+          await new Promise(r => setTimeout(r, 100));
+          await this.ble.send(new Uint8Array([0x1b, 0x4a, 120])); // ESC J 120 (Feed Paper)
+        } catch (e) {
+          console.error('Failed to clear buffer after cancel', e);
+        }
+        
+        this.updateStatus('Cancelled. Please tear off the strip.', true);
+        this.hideStatusAfter(6000);
+        
+        // Show reprint button again so they don't lose the photo data
+        if (this.reprintButton && this.lastRasterData) {
+          this.reprintButton.classList.remove('hidden');
+        }
+      } else {
+        console.error('Print error:', error);
+        this.updateStatus(`Error: ${error.message}. Please try again.`, true);
+        this.hideStatusAfter(5000);
+      }
     } finally {
       if (this.cancelButton) this.cancelButton.classList.add('hidden');
       if (this.startButton) this.startButton.classList.remove('hidden');
