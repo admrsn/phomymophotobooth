@@ -56,10 +56,10 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            transform: scaleX(-1); /* Mirror front camera */
+            transform: scaleX(-1);
         }
 
-        /* 2:3 Print Bounding Box Overlay centered on screen */
+        /* Viewfinder framing box matching 2:3 print aspect ratio precisely */
         .viewfinder-overlay {
             position: absolute;
             top: 45%;
@@ -69,7 +69,7 @@
             aspect-ratio: 2 / 3;
             border: 2px dashed rgba(255, 255, 255, 0.7);
             border-radius: 12px;
-            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45); /* Dims outside area */
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
             pointer-events: none;
             z-index: 5;
         }
@@ -222,19 +222,13 @@
 </head>
 <body>
     <div class="photobooth-container">
-        <!-- Full screen background video feed -->
         <video id="camera-feed" playsinline autoplay muted></video>
-        
-        <!-- Viewfinder bounding box showing exact print area -->
         <div class="viewfinder-overlay"></div>
-        
-        <!-- Flash effect overlay -->
         <div id="flash-overlay" class="flash-overlay"></div>
 
         <div class="status-display" id="status-display"></div>
         <div class="countdown" id="countdown"></div>
 
-        <!-- Buttons overlaid on top of video, positioned below the box -->
         <div class="ui-layer">
             <div class="button-area">
                 <button id="connect-printer-btn">
