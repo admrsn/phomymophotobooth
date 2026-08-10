@@ -19,7 +19,7 @@ export class PhotoboothApp {
     
     this.photoCount = 3;           
     this.printerWidthPx = 576;     
-    this.photoHeightPx = 768;      // 3:4 Aspect ratio height
+    this.photoHeightPx = 768;      
     this.borderSize = 16;          
     this.bottomMargin = 160;       
     this.cornerRadius = 32;        
@@ -65,7 +65,6 @@ export class PhotoboothApp {
       }
       if (this.cancelButton) {
         this.cancelButton.addEventListener('click', () => { 
-          // Flag the cancellation to break the loop instantly
           this.printCancelled = true; 
         });
       }
@@ -121,6 +120,9 @@ export class PhotoboothApp {
       }
         
       this.updateStatus('Get ready!', true);
+      
+      // Flash "Smile!" brightly on screen right before the countdown sequence starts
+      await this.showScreenMessage('Smile!', 1500);
       
       for (let i = 0; i < this.photoCount; i++) {
         await this.showCountdown();
@@ -186,10 +188,9 @@ export class PhotoboothApp {
       await print(this.ble, rasterData, { 
         isBLE: true, 
         continuous: true, 
-        feed: 120, 
+        feed: 160, 
         onProgress: (progress) => {
           if (this.printCancelled) {
-            // Throwing an error here instantly breaks the print loop in printer.js
             throw new Error('CANCELLED');
           }
           this.updateStatus(`Printing... ${progress}%`, false);
@@ -204,11 +205,26 @@ export class PhotoboothApp {
       if (error.message === 'CANCELLED') {
         this.updateStatus('Print cancelled. Ejecting paper...', true);
         try {
-          // Hardware Whisper: Instantly wipe the printer's memory buffer and manually feed paper
-          await new Promise(r => setTimeout(r, 100));
-          await this.ble.send(new Uint8Array([0x1b, 0x40])); // ESC @ (Hardware Reset)
-          await new Promise(r => setTimeout(r, 100));
-          await this.ble.send(new Uint8Array([0x1b, 0x4a, 120])); // ESC J 120 (Feed Paper)
+          await new Promise(r => setTimeout(r, 200));
+          await this.ble.send(new Uint8Array([0x1b, 0x40])); 
+          await new Promise(r => setTimeout(r, 400)); 
+
+          const blankCanvas = document.createElement('canvas');
+          blankCanvas.width = this.printerWidthPx;
+          blankCanvas.height = 8;
+          const ctx = blankCanvas.getContext('2d');
+          ctx.fillStyle = 'white';
+          ctx.fillRect(0, 0, blankCanvas.width, blankCanvas.height);
+          
+          const blankRaster = this.getRasterDataFromCanvas(blankCanvas);
+          
+          await print(this.ble, blankRaster, { 
+              isBLE: true, 
+              continuous: true, 
+              feed: 160,
+              onProgress: () => {} 
+          });
+
         } catch (e) {
           console.error('Failed to clear buffer after cancel', e);
         }
@@ -216,7 +232,6 @@ export class PhotoboothApp {
         this.updateStatus('Cancelled. Please tear off the strip.', true);
         this.hideStatusAfter(6000);
         
-        // Show reprint button again so they don't lose the photo data
         if (this.reprintButton && this.lastRasterData) {
           this.reprintButton.classList.remove('hidden');
         }
@@ -229,6 +244,30 @@ export class PhotoboothApp {
       if (this.cancelButton) this.cancelButton.classList.add('hidden');
       if (this.startButton) this.startButton.classList.remove('hidden');
     }
+  }
+
+  showScreenMessage(text, durationMs) {
+    return new Promise((resolve) => {
+      if (!this.countdownElement) {
+        setTimeout(resolve, durationMs);
+        return;
+      }
+
+      // Temporarily shrink font size so words don't overflow the screen
+      this.countdownElement.style.fontSize = '80px'; 
+      this.countdownElement.classList.remove('visible');
+      void this.countdownElement.offsetWidth;
+      this.countdownElement.classList.add('visible');
+      
+      this.countdownElement.textContent = text;
+      
+      setTimeout(() => {
+        this.countdownElement.classList.remove('visible');
+        this.countdownElement.textContent = '';
+        this.countdownElement.style.fontSize = ''; // Restore default CSS size
+        resolve();
+      }, durationMs);
+    });
   }
   
   showCountdown() {
