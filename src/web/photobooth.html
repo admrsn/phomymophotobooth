@@ -21,7 +21,7 @@
         }
         return true;
     };
-</script>
+    </script>
     <style>
         * {
             margin: 0;
@@ -208,7 +208,7 @@
     <!-- Import existing Phomymo modules -->
     <script type="module">
         import { BLETransport } from './ble.js';
-        import { Printer } from './printer.js';
+        import { print } from './printer.js';
         import { PhotoboothApp } from './photobooth.js';
 
         // Initialize the photobooth application
@@ -223,7 +223,7 @@
         // Make app globally available for debugging
         window.photoboothApp = app;
         window.BLETransport = BLETransport;
-        window.Printer = Printer;
+        window.printFunction = print;
     </script>
 </body>
 </html>
