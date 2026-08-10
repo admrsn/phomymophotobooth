@@ -19,9 +19,10 @@ export class PhotoboothApp {
     this.compositeCanvasElement = this.resolveElement(options.compositeCanvasId);
     
     this.photoCount = 3;           
-    this.printerWidthPx = 576;     
-    this.photoHeightPx = 864;      
-    this.borderSize = 16;          
+    this.printerWidthPx = 576;     // Full printer head width (72 bytes * 8)
+    this.photoHeightPx = 864;      // 2:3 Aspect ratio height (576 * 1.5) matching the UI viewfinder
+    this.borderSize = 16;          // Vertical spacing between photos
+    this.bottomMargin = 80;        // Blank padding at the bottom for easy tearing
     this.countdownDuration = 3;    
     this.capturedPhotos = [];
     
@@ -168,7 +169,8 @@ export class PhotoboothApp {
       const rasterData = this.getRasterDataFromCanvas(compositeCanvas);
       
       this.updateStatus('Sending to printer...');
-      await print(this.ble, rasterData, { isBLE: true, continuous: true });
+      // Reverted density to standard default, kept feed: 80 for bottom tear margin
+      await print(this.ble, rasterData, { isBLE: true, continuous: true, feed: 80 });
       
       this.updateStatus('Complete! Strip printed successfully.');
       setTimeout(() => this.hideStatus(), 4000);
@@ -224,9 +226,10 @@ export class PhotoboothApp {
       
       const ctx = tempCanvas.getContext('2d');
 
+      // 2:3 aspect ratio center crop matching viewfinder overlay
       const videoWidth = this.videoElement.videoWidth;
       const videoHeight = this.videoElement.videoHeight;
-      const targetAspect = this.printerWidthPx / this.photoHeightPx; 
+      const targetAspect = this.printerWidthPx / this.photoHeightPx; // 2:3
       const videoAspect = videoWidth / videoHeight;
 
       let srcW = videoWidth;
@@ -279,7 +282,7 @@ export class PhotoboothApp {
     const border = this.borderSize;
     
     const compositeWidth = photoWidth; 
-    const compositeHeight = (photoHeight * this.photoCount) + (border * (this.photoCount + 1));
+    const compositeHeight = (photoHeight * this.photoCount) + (border * (this.photoCount + 1)) + this.bottomMargin;
     
     const compositeCanvas = document.createElement('canvas');
     compositeCanvas.width = compositeWidth;
