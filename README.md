@@ -1,130 +1,233 @@
-# Phomymo
+# Phomymo Photobooth
 
-A free, browser-based label designer for Phomemo thermal printers. No drivers needed - connects via Bluetooth or USB.
+A browser-based DIY photobooth for Android Chrome and Phomemo thermal printers. Captures 5 photos in rapid succession with a visual countdown, stitches them into a classic film-strip layout with white borders, and prints directly to your Phomemo thermal printer via Web Bluetooth—no drivers, no apps required.
 
-**Try it now: https://phomymo.affordablemagic.net**
-
-<p>
-  <img src="screenshot.png" alt="Phomymo Label Designer" width="600" />
-  <img src="screenshot-mobile.png" alt="Mobile UI" width="200" />
-</p>
+Perfect for parties, events, and gatherings where guests can walk up, tap a button, and take home a printed strip of memories.
 
 ## Quick Start
 
-1. Open https://phomymo.affordablemagic.net in Chrome (or any Chromium-based browser)
-2. Click **Connect** to pair with your printer via Bluetooth (or **USB** for PM-241)
-3. Design your label and click **Print**
+### Access the Photobooth
 
-To run locally (Web Bluetooth requires HTTPS or localhost):
+1. **Host via GitHub Pages**  
+   The photobooth is deployed at: `https://<yourusername>.github.io/phomymophotobooth/src/web/photobooth.html`
 
-```bash
-cd src/web
-python3 -m http.server 8080
-# Open http://localhost:8080 in Chrome
+2. **Open in Android Chrome**  
+   - Open the URL on an Android device running Chrome
+   - Wait for the camera to initialize (you'll see "Ready! Tap Start to begin.")
+
+3. **Install as a Standalone App (Recommended)**  
+   - Tap the three-dot menu in Chrome
+   - Select **"Install app"** or **"Add to Home Screen"**
+   - The photobooth will appear as a full-screen kiosk app
+   - Subsequent launches skip the browser chrome for a cleaner UX
+
+### How to Use
+
+1. **Tap START** — The countdown begins
+2. **Smile!** — A giant 3-2-1 countdown appears on screen
+3. **Photo captured** — Automatically repeats 5 times
+4. **Wait for stitching** — The app combines all 5 photos into a vertical film strip
+5. **Printer connection** — If your printer isn't paired yet, the Web Bluetooth device picker appears (select your Phomemo printer by name)
+6. **Print!** — The strip prints automatically
+
+The entire process takes about 10–15 seconds from start to printed output.
+
+## Architecture & Technical Details
+
+### The Capture Loop
+
+```
+[3-second countdown] → [Capture frame 1] → [3-second countdown] → [Capture frame 2] ...
+                                                                         ↓
+                                        [Repeat 5 times total]
+                                                ↓
+                                    [Stitch 5 photos vertically]
+                                                ↓
+                                        [Dither & print]
 ```
 
-**Requires:** Chrome, Edge, or another Chromium-based browser. Web Bluetooth is not available in Firefox or Safari. Android Chrome is supported with full touch UI; iOS is not supported. PM-241 printers require USB (WebUSB).
+**Key technical steps:**
 
-## Features
+1. **Camera Feed** (`photobooth.js::init()`)
+   - Requests front-facing camera via `navigator.mediaDevices.getUserMedia()`
+   - Streams to a `<video>` element that fills the screen
+   - Front-facing camera is automatically mirrored for selfie-style operation
 
-**Design Elements** - Text (multiple fonts including local system fonts, sizes, styles, alignment, background colors), images with scale/aspect lock, barcodes (Code128, EAN-13, UPC-A, Code39), QR codes, and shapes (rectangle, ellipse, triangle, line) with solid, dithered grayscale, and stroke fills.
+2. **Countdown & Capture** (`photobooth.js::showCountdown()`, `capturePhoto()`)
+   - Displays a large, pulsing countdown (3, 2, 1) with a CSS animation
+   - After countdown, captures the current video frame onto a temporary canvas
+   - Photo stored as JPEG data URL for memory efficiency
+   - 500ms delay between captures to give the printer time to advance
 
-**Editing** - Drag to move, corner/edge resize handles, rotation. Multi-select (Shift+click), grouping (Ctrl/Cmd+G), undo/redo, keyboard nudge, layer ordering, clipboard image paste (Ctrl/Cmd+V).
+3. **Photo Stitching** (`photobooth.js::stitchPhotos()`, `createComposite()`)
+   - Loads all 5 JPEG data URLs as `Image` objects
+   - Combines them onto a single off-screen canvas
+   - Layout: **5 photos stacked vertically with 20px solid white borders**
+     - 20px margin above first photo
+     - 20px spacing between each photo
+     - 20px margin below last photo
+   - Resulting canvas: typically 480–600px wide × 2000–2400px tall (depends on video resolution)
 
-**Label Sizes** - Preset sizes for each printer type, round labels, custom dimensions. Auto-switches based on connected printer. Multi-label rolls with clone or individual zone modes.
+4. **Dithering & Print** (`photobooth.js::getRasterDataFromCanvas()`)
+   - Passes the composite canvas to the existing Phomymo printing engine
+   - `CanvasRenderer` applies **Floyd-Steinberg dithering** to convert full-color photos to 1-bit monochrome
+   - Dithering preserves detail and contrast in the grayscale thermal print
+   - Converts to raster byte array (72 bytes per line = 576 pixels, standard Phomemo width)
+   - Sends via Web Bluetooth (`PrinterProtocol.printRaster()`)
 
-**Templates & Batch Printing** - Variable fields with `{{FieldName}}` syntax, CSV import, preview grid, and batch printing with progress tracking.
+### DOM & Component Structure
 
-**Instant Expressions** - Dynamic values at print time using `[[expression]]` syntax: `[[date]]`, `[[time]]`, `[[datetime]]`, or custom formats like `[[date|MM/DD/YYYY]]`. Works in text, barcodes, and QR codes.
+```
+photobooth.html
+├── <video id="camera-feed">          — Live camera stream (mirrored)
+├── .ui-layer                          — Overlay for UI elements
+│   ├── #status-display                — Status/progress text
+│   ├── #countdown                     — Large countdown numbers (3, 2, 1)
+│   └── .button-area → #start-button   — Main START button
+├── #composite-canvas (hidden)         — Off-screen stitched photo strip
+└── <script type="module">
+    └── import PhotoboothApp from './photobooth.js'
+        ├── BLETransport (./ble.js)    — Web Bluetooth connection
+        ├── CanvasRenderer (./canvas.js) — Dithering engine
+        └── PrinterProtocol (./printer.js) — Print commands
+```
 
-**Print Preview** - Toggle dither preview to see exact thermal print output before printing.
+### State Management
 
-**Export** - Save/load designs to browser storage, export/import as JSON, export to PDF or PNG.
+The `PhotoboothApp` class maintains:
+- `isCapturing` — Prevents multiple concurrent sessions
+- `capturedPhotos[]` — Array of JPEG data URLs
+- `ble` — Singleton `BLETransport` for Bluetooth
+- `printerProtocol` — Lazy-initialized `PrinterProtocol` instance
 
-**Mobile** - Full-featured touch UI with pinch-to-zoom, two-finger pan, slide-up property panels, and complete feature parity with desktop.
+### Browser Requirements
 
-**Printer Status** - Live battery level, paper status, firmware version, and serial number with auto-query on connect.
+- **Android Chrome** (Android 6+)  
+  Web Bluetooth API and camera access fully supported
+- **Desktop Chrome/Edge** (Windows, macOS)  
+  Works for testing; full-screen kiosk mode recommended on Android
+- **iOS Safari**  
+  Not supported (Web Bluetooth unavailable; camera permissions model different)
+- **Firefox**  
+  Not supported (Web Bluetooth not implemented)
+
+## Running Locally (for Development)
+
+To run locally with HTTPS (required for Web Bluetooth):
+
+```bash
+# Clone and navigate
+git clone https://github.com/admrsn/phomymophotobooth.git
+cd phomymophotobooth/src/web
+
+# Option 1: Python HTTP server (HTTP on localhost)
+python3 -m http.server 8080
+# Open http://localhost:8080/photobooth.html
+
+# Option 2: Node.js with HTTPS (recommended for full BLE testing)
+# Install a local HTTPS server, e.g., https://www.npmjs.com/package/http-server
+npx http-server --ssl
+# Open https://localhost:8080/photobooth.html
+```
+
+**Note:** Web Bluetooth API requires either:
+- `localhost` (any port)
+- HTTPS domain with valid certificate
+- Android Chrome on an HTTPS GitHub Pages URL
 
 ## Supported Printers
 
+The photobooth works with all Phomemo thermal printers that support the BLE protocol:
+
 | Model | Width | Notes |
 |-------|-------|-------|
-| P12 / P12 Pro | 12mm | Continuous tape label maker |
-| A30 | 12-15mm | Continuous tape, faster print speed |
-| M02 / M02S / M02X | 48mm (384px) | Mini pocket printers, continuous paper |
-| M02 Pro | 53mm (626px) | 300 DPI high-resolution mini printer |
-| M03 | 53mm (432px) | Mini sticker printer |
-| T02 | 48mm (384px) | Mini sticker printer |
-| M04S / M04AS | 53/80/110mm | 300 DPI multi-width printer (select paper size in settings) |
-| M110 / M120 | 48mm (384px) | Narrow label makers |
-| M200 / M250 | 75mm (608px) | Mid-size labels |
-| M220 / M221 | 72mm (576px) | Wide labels |
-| M260 | 72mm (576px) | Wide label maker |
-| D30 / D35 / D50 / D110 | 12-15mm | Smart mini label makers (rotated protocol) |
-| Q30 / Q30S | 12-15mm | Similar to D30 |
-| PM-241 / PM-241-BT | 102mm (4") | Shipping labels, USB only (TSPL protocol) |
+| P12 / P12 Pro | 12mm | Continuous tape |
+| M02 / M02S / M02X | 48mm | Mini printers |
+| M110 / M120 | 48mm | Label makers |
+| M200 / M250 | 75mm | Mid-size labels |
+| M220 / M221 / M260 | 72mm | Wide labels |
+| D30 / D35 / D50 / D110 | 12–15mm | Rotated protocol (auto-handled) |
 
-The app auto-detects your printer model from the Bluetooth device name and configures the correct protocol, print width, DPI, and label presets. If auto-detection fails, you can manually select your model in Print Settings, or the app will prompt you on first connection.
+The app auto-detects your printer model and configures the correct print width and DPI. See the original [Phomymo README](#original-phomymo-readme) for a complete printer list and manual setup instructions.
 
-D-series printers print labels rotated 90° - the app handles this automatically. PM-241 printers use Bluetooth Classic (not BLE), so use the USB connection instead.
+## Customization
 
-## Custom Printer Definitions
+### Adjust Photo Timing
 
-You can add, edit, and override printer definitions through **Print Settings > Manage Printers**. This lets you:
+Edit `photobooth.js`:
+```javascript
+this.photoCount = 5;              // Number of photos
+this.countdownDuration = 3;       // Seconds before each capture
+this.borderSize = 20;             // Pixels of white border
+```
 
-- **Add new printers** not yet in the built-in list with your own protocol, width, DPI, and alignment settings
-- **Override built-in printers** to adjust settings like alignment or width for your specific hardware
-- **Set auto-detect patterns** so your custom definitions are recognized automatically by BLE device name
+### Change Button Text & Colors
 
-Custom definitions are saved in your browser's localStorage and take priority over built-ins. Modified built-in printers can be reset to defaults at any time.
+Edit `photobooth.html`:
+```html
+#start-button {
+    background-color: #2563eb;    /* Blue */
+    /* Change to your brand color */
+}
+```
 
-Built-in definitions are loaded from `printers.json` at startup.
+### Adjust Print Width
 
-## Keyboard Shortcuts
+Edit `photobooth.js::getRasterDataFromCanvas()`:
+```javascript
+const printerWidthBytes = 72;     // 576 pixels (72 × 8-bit bytes)
+// Standard printers: 72 bytes
+// Wide printers (M260, M221): 72 bytes
+// Narrow printers (M110): 48 bytes
+```
 
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl/Cmd + Z` | Undo |
-| `Ctrl/Cmd + Shift + Z` | Redo |
-| `Ctrl/Cmd + D` | Duplicate selected |
-| `Ctrl/Cmd + G` | Group selected |
-| `Ctrl/Cmd + Shift + G` | Ungroup |
-| `Ctrl/Cmd + V` | Paste image from clipboard |
-| `Delete / Backspace` | Delete selected |
-| `Arrow keys` | Nudge by 1px |
-| `Shift + Arrow keys` | Nudge by 10px |
-| `Shift + Click` | Add to selection |
+## Troubleshooting
 
-## Connection Tips
+| Issue | Solution |
+|-------|----------|
+| Camera won't load | Grant camera permissions; check browser console for errors |
+| Photos not capturing | Ensure video stream has loaded; check `photoCount` |
+| Bluetooth connection fails | Restart phone & printer; ensure printer is in pairing mode |
+| Print quality issues | Verify dithering settings; test with sample image first |
+| App crashes on large photos | Reduce camera resolution or compress JPEG quality |
 
-When the Bluetooth device picker appears, select the device showing a **signal strength indicator**. Devices listed without signal strength may be cached/ghost entries that won't connect properly.
+## Known Limitations
+
+- **iOS**: Not supported due to lack of Web Bluetooth API
+- **Firefox**: Not supported due to lack of Web Bluetooth API
+- **Large video resolutions**: May cause memory/performance issues on older Android devices; the app defaults to 1280×720
+- **Print width**: Automatically set per printer; manual width changes require code edits
+- **Offline printing**: Requires Bluetooth pairing beforehand; unpaired printers will trigger the device picker on first use
 
 ## Project Structure
 
 ```
-phomymo/
+phomymophotobooth/
 ├── src/
 │   └── web/
-│       ├── index.html     # Main UI
-│       ├── app.js         # Application logic
-│       ├── canvas.js      # Canvas rendering & dithering
-│       ├── elements.js    # Element management
-│       ├── handles.js     # Selection handles
-│       ├── storage.js     # localStorage persistence
-│       ├── templates.js   # Variable substitution & CSV
-│       ├── ble.js         # Web Bluetooth transport
-│       ├── usb.js         # WebUSB transport
-│       ├── printer.js     # Print protocols
-│       ├── printers.json  # Built-in printer definitions
-│       ├── constants.js   # Shared constants
-│       └── utils/
-│           ├── bindings.js   # Event binding helpers
-│           ├── errors.js     # Error handling
-│           └── validation.js # Input validation
-└── README.md
+│       ├── photobooth.html        ← Main kiosk UI
+│       ├── photobooth.js          ← Photobooth app logic
+│       ├── index.html             ← Original Phomymo label designer
+│       ├── app.js                 ← Label designer app logic
+│       ├── canvas.js              ← Dithering & rendering engine
+│       ├── ble.js                 ← Web Bluetooth transport
+│       ├── printer.js             ← Print protocols
+│       ├── constants.js           ← Shared constants
+│       ├── printers.json          ← Printer definitions
+│       └── [other files]          ← Label designer support files
+├── README.md                      ← This file
+└── LICENSE
 ```
 
-## Acknowledgments
+## Original Phomymo README
+
+This photobooth is built on top of **Phomymo**, a browser-based label designer for Phomemo printers. The core Bluetooth communication, print protocols, and dithering engine are from the original Phomymo project.
+
+For detailed information on supported printers, label design features, templates, and advanced print settings, see the original project:
+
+**[Phomymo Label Designer](https://phomymo.affordablemagic.net)** — https://github.com/transcriptionstream/phomymo
+
+### Original Acknowledgments
 
 Protocol research and inspiration:
 
@@ -134,10 +237,20 @@ Protocol research and inspiration:
 
 Libraries: [JsBarcode](https://github.com/lindell/JsBarcode), [QRCode.js](https://github.com/davidshimjs/qrcodejs), [jsPDF](https://github.com/parallax/jsPDF)
 
-## Support the Project
+### License
 
-If Phomymo is useful to you, consider [making a donation](https://donate.stripe.com/7sY7sMese0182tXgn8eAg00) to support ongoing development.
+MIT License — see LICENSE file for details.
 
-## License
+This project is a derivative of Phomymo (original by transcriptionstream). All original code and protocols remain under the MIT license.
 
-MIT License - see LICENSE file for details.
+---
+
+## Contributing
+
+Found a bug? Have a feature request? Issues and pull requests are welcome!
+
+For questions about the original Phomymo label designer, see the [original repository](https://github.com/transcriptionstream/phomymo).
+
+---
+
+**Happy photo-printing! 🎉📸**
