@@ -12,7 +12,7 @@ export class PhotoboothApp {
     // Resolve element IDs to actual DOM elements
     this.videoElement = this.resolveElement(options.videoElementId);
     this.startButton = this.resolveElement(options.startButtonId);
-    this.statusElement = this.resolveElement(options.statusElementId);
+    this.statusElement = this.resolveElement(options.statusDisplayId);
     this.countdownElement = this.resolveElement(options.countdownElementId);
     this.compositeCanvasElement = this.resolveElement(options.compositeCanvasId);
     
