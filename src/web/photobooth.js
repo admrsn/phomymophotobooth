@@ -22,7 +22,7 @@ export class PhotoboothApp {
     this.printerWidthPx = 576;     // Full printer head width (72 bytes * 8)
     this.photoHeightPx = 864;      // 2:3 Aspect ratio height (576 * 1.5) matching the UI viewfinder
     this.borderSize = 16;          // Vertical spacing between photos
-    this.bottomMargin = 80;        // Blank padding at the bottom for easy tearing
+    this.bottomMargin = 160;       // ~2cm blank padding at the END of the print for easy tearing
     this.countdownDuration = 3;    
     this.capturedPhotos = [];
     
@@ -169,7 +169,8 @@ export class PhotoboothApp {
       const rasterData = this.getRasterDataFromCanvas(compositeCanvas);
       
       this.updateStatus('Sending to printer...');
-      await print(this.ble, rasterData, { isBLE: true, continuous: true, feed: 80 });
+      // Kept continuous mode and standard density, increased feed for clean tearing
+      await print(this.ble, rasterData, { isBLE: true, continuous: true, feed: 100 });
       
       this.updateStatus('Complete! Strip printed successfully.');
       setTimeout(() => this.hideStatus(), 4000);
@@ -225,6 +226,7 @@ export class PhotoboothApp {
       
       const ctx = tempCanvas.getContext('2d');
 
+      // 2:3 aspect ratio center crop matching viewfinder overlay
       const videoWidth = this.videoElement.videoWidth;
       const videoHeight = this.videoElement.videoHeight;
       const targetAspect = this.printerWidthPx / this.photoHeightPx; 
@@ -291,9 +293,20 @@ export class PhotoboothApp {
     ctx.fillRect(0, 0, compositeWidth, compositeHeight);
     
     photoImages.forEach((img, index) => {
+      // Print bottom-up: reverse the index so the last photo taken is placed at the top (Y=0, prints first).
+      const reverseIndex = (this.photoCount - 1) - index;
+      
       const x = 0; 
-      const y = border + (index * (photoHeight + border));
-      ctx.drawImage(img, x, y, photoWidth, photoHeight);
+      const y = border + (reverseIndex * (photoHeight + border));
+      
+      ctx.save();
+      
+      // Move to the center of the target image slot, rotate 180 degrees, and draw.
+      ctx.translate(x + photoWidth / 2, y + photoHeight / 2);
+      ctx.rotate(Math.PI);
+      ctx.drawImage(img, -photoWidth / 2, -photoHeight / 2, photoWidth, photoHeight);
+      
+      ctx.restore();
     });
     
     return compositeCanvas;
