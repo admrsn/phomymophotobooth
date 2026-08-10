@@ -169,7 +169,6 @@ export class PhotoboothApp {
       const rasterData = this.getRasterDataFromCanvas(compositeCanvas);
       
       this.updateStatus('Sending to printer...');
-      // Reverted density to standard default, kept feed: 80 for bottom tear margin
       await print(this.ble, rasterData, { isBLE: true, continuous: true, feed: 80 });
       
       this.updateStatus('Complete! Strip printed successfully.');
@@ -226,10 +225,9 @@ export class PhotoboothApp {
       
       const ctx = tempCanvas.getContext('2d');
 
-      // 2:3 aspect ratio center crop matching viewfinder overlay
       const videoWidth = this.videoElement.videoWidth;
       const videoHeight = this.videoElement.videoHeight;
-      const targetAspect = this.printerWidthPx / this.photoHeightPx; // 2:3
+      const targetAspect = this.printerWidthPx / this.photoHeightPx; 
       const videoAspect = videoWidth / videoHeight;
 
       let srcW = videoWidth;
