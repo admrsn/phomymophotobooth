@@ -65,7 +65,7 @@ export class PhotoboothApp {
       }
       if (this.cancelButton) {
         this.cancelButton.addEventListener('click', () => { 
-          // Flag the cancellation to break the print loop instantly
+          // Flag the cancellation to break the print loop via the callback
           this.printCancelled = true; 
         });
       }
@@ -189,11 +189,13 @@ export class PhotoboothApp {
         isBLE: true, 
         continuous: true, 
         feed: 160, 
+        isCancelled: () => this.printCancelled,
         onProgress: (progress) => {
           if (this.printCancelled) {
-            throw new Error('CANCELLED');
+            this.updateStatus(`Cancelling & Ejecting... ${progress}%`, false);
+          } else {
+            this.updateStatus(`Printing... ${progress}%`, false);
           }
-          this.updateStatus(`Printing... ${progress}%`, false);
         }
       });
       
@@ -205,32 +207,12 @@ export class PhotoboothApp {
       if (error.message === 'CANCELLED') {
         this.updateStatus('Print cancelled. Ejecting paper...', true);
         try {
-          // HARDWARE WHISPER: When we abort the print loop, the printer is left hanging 
-          // halfway through a 255-line chunk, starving for bytes. If we send commands now, 
-          // they get absorbed as pixels, corrupting the horizontal alignment!
-          // FIX: We flood the printer with exactly one max-chunk of zeros (18,360 bytes).
-          // It absorbs exactly what it needs to finish the block (feeding blank paper),
-          // natively resets its column alignment, and ignores the leftover zeros.
-          const flushData = new Uint8Array(18360); // 255 lines * 72 bytes
-          
-          const sendData = async (data) => {
-            if (this.ble.send) await this.ble.send(data);
-            else if (this.ble.write) await this.ble.write(data);
-          };
-
-          // Send in chunks so we don't blow out the BLE MTU limit
-          for (let i = 0; i < flushData.length; i += 512) {
-              await sendData(flushData.slice(i, i + 512));
-              await new Promise(r => setTimeout(r, 10)); 
-          }
-          
-          // Now the printer is safely back in command mode with a clean byte alignment. Hard reset it.
-          await new Promise(r => setTimeout(r, 200));
-          await sendData(new Uint8Array([0x1b, 0x40])); // ESC @
-          
-          // Feed a final clean margin so it clears the cutter
+          // printer.js has already safely drained the zero-bytes
           await new Promise(r => setTimeout(r, 100));
-          await sendData(new Uint8Array([0x1b, 0x4a, 120])); // ESC J 120
+          await this.ble.send(new Uint8Array([0x1b, 0x40])); // ESC @
+          
+          await new Promise(r => setTimeout(r, 100));
+          await this.ble.send(new Uint8Array([0x1b, 0x4a, 160])); // ESC J 160
           
         } catch (e) {
           console.error('Failed to clear buffer after cancel', e);
@@ -239,7 +221,6 @@ export class PhotoboothApp {
         this.updateStatus('Cancelled. Please tear off the strip.', true);
         this.hideStatusAfter(6000);
         
-        // Show reprint button again so they don't lose the photo data if it was an accidental cancel
         if (this.reprintButton && this.lastRasterData) {
           this.reprintButton.classList.remove('hidden');
         }
