@@ -72,6 +72,26 @@ export class PhotoboothApp {
       if (this.reprintButton) {
         this.reprintButton.addEventListener('click', () => this.handleReprint());
       }
+
+      // --- NEW: Bluetooth Selfie Clicker Listener ---
+      window.addEventListener('keydown', (event) => {
+        // Selfie remotes usually send Volume Up, Enter, or Space
+        const triggerKeys = ['Enter', ' ', 'VolumeUp', 'AudioVolumeUp', 'VolumeDown', 'AudioVolumeDown'];
+        
+        if (triggerKeys.includes(event.key) || triggerKeys.includes(event.code)) {
+          event.preventDefault(); // Stop the phone from actually turning up the volume
+          
+          // Only start if the booth is ready and not already taking photos
+          if (!this.isCapturing && !this.startButton.disabled) {
+            // Give the UI a quick visual pop so they know the button worked
+            this.startButton.style.transform = 'scale(0.94)';
+            setTimeout(() => this.startButton.style.transform = '', 150);
+            
+            this.startPhotoSession();
+          }
+        }
+      });
+      // ----------------------------------------------
       
       this.updateStatus('Ready! Tap Start to begin.', true);
       this.hideStatusAfter(5000);
