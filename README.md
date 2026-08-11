@@ -1,6 +1,6 @@
 # Phomymo Photobooth
 
-A Progressive Web App (PWA) DIY photobooth for Android Chrome and Phomemo thermal printers. Captures 3 photos in a 3:4 portrait ratio, adds perfect rounded corners, stitches them into a classic film-strip layout, and prints directly to your Phomemo thermal printer via Web Bluetooth - no drivers, no apps required.
+A Progressive Web App (PWA) DIY photobooth for Android Chrome and Phomemo thermal printers. Captures 3 photos in a 3:4 portrait ratio, adds perfect rounded corners, stitches them into a classic film-strip layout, and prints directly to your Phomemo thermal printer via Web Bluetooth—no drivers, no apps required.
 
 Perfect for parties, events, and gatherings where guests can walk up, tap a button (or a Bluetooth selfie remote), and take home a printed strip of memories.
 
@@ -60,3 +60,92 @@ Open `src/web/photobooth.js` and edit these lines at the top of the file:
 this.photoCount = 3;              // Number of photos to take
 this.countdownDuration = 3;       // Seconds to wait before each snap
 this.cornerRadius = 32;           // How round you want the photo edges to be
+```
+
+Want to change the "Smile!" text? Search the `photobooth.js` file for `'Smile!'` and change it to `'Strike a Pose!'`, `'Cheers!'`, or anything else!
+
+*(Note: Whenever you make a change, wait 60 seconds, then close the app entirely on your phone and re-open it while connected to Wi-Fi to load your updates).*
+
+---
+
+## ⚙️ Architecture & Technical Details
+
+### The Capture Loop
+
+```text
+[ "Smile!" ] → [3-sec countdown] → [Capture 1] → [3-sec countdown] → [Capture 2] ...
+                                                                           ↓
+                                        [Repeat 3 times total]
+                                                ↓
+                        [Crop 3:4, Apply Rounded Corners, Stitch Vertically]
+                                                ↓
+                                        [Dither & Print]
+```
+
+**Exact-Drain Cancellation Protocol** (`printer.js::printM02()`)
+Standard ESC/POS printers crash if a Bluetooth connection is severed mid-image. If canceled, this app calculates the *exact* number of bytes remaining in the hardware buffer, floods the printer with zero-bytes (white space) to satisfy the chunk requirement, and then issues a clean hardware reset (`ESC @`) followed by a manual paper feed (`ESC J`). This saves paper while maintaining perfect horizontal alignment for the next print.
+
+### Browser Requirements
+
+- **Android Chrome** (Android 6+)  
+  Web Bluetooth API, camera access, and PWA installation fully supported.
+- **Desktop Chrome/Edge** (Windows, macOS)  
+  Works for testing; full-screen kiosk mode recommended on Android.
+- **iOS Safari**  
+  Not supported (Apple has not enabled the Web Bluetooth API on iPhones/iPads).
+- **Firefox**  
+  Not supported (Web Bluetooth not implemented).
+
+## Running Locally (Advanced)
+
+To run locally with HTTPS (required for Web Bluetooth) on your PC:
+
+```bash
+# Clone and navigate
+git clone [https://github.com/](https://github.com/)<yourusername>/phomymophotobooth.git
+cd phomymophotobooth/src/web
+
+# Option 1: Python HTTP server (HTTP on localhost)
+python3 -m http.server 8080
+# Open http://localhost:8080/photobooth.html
+
+# Option 2: Node.js with HTTPS (recommended for full BLE testing)
+npx http-server --ssl
+# Open https://localhost:8080/photobooth.html
+```
+
+## Supported Printers
+
+The photobooth works with all Phomemo thermal printers that support the BLE protocol. The app auto-detects your printer model and configures the correct print width and DPI. 
+
+| Model | Width | Notes |
+|-------|-------|-------|
+| M02 / M02 Pro / M02S | 48mm / 53mm | Mini continuous printers (Ideal for this app) |
+| M110 / M120 | 48mm | Label makers |
+| M200 / M250 | 75mm | Mid-size labels |
+| M220 / M221 / M260 | 72mm | Wide labels |
+
+## Original Phomymo README
+
+This photobooth is built on top of **Phomymo**, a browser-based label designer for Phomemo printers. The core Bluetooth communication, print protocols, and dithering engine are from the original Phomymo project.
+
+For detailed information on supported printers, label design features, templates, and advanced print settings, see the original project:
+
+**[Phomymo Label Designer](https://phomymo.affordablemagic.net)** — https://github.com/transcriptionstream/phomymo
+
+### Original Acknowledgments
+
+Protocol research and inspiration:
+- [vivier/phomemo-tools](https://github.com/vivier/phomemo-tools) - CUPS driver with reverse-engineered protocol
+- [yaddran/thermal-print](https://github.com/yaddran/thermal-print) - Printer status query commands
+- [ooki1jp](https://github.com/vivier/phomemo-tools/issues/27#issuecomment-3850158579) - M04AS/M04S protocol reverse-engineering
+
+### License
+
+MIT License — see LICENSE file for details.
+
+This project is a derivative of Phomymo (original by transcriptionstream). All original code and protocols remain under the MIT license.
+
+---
+
+**Happy photo-printing! 🎉📸**
