@@ -199,7 +199,7 @@ export class PhotoboothApp {
         }
       });
       
-      this.updateStatus('Complete! Please tear off your strip using the serrated teeth.', true);
+      this.updateStatus('Complete! Please tear off your strip', true);
       this.hideStatusAfter(6000);
       if (this.reprintButton) this.reprintButton.classList.remove('hidden');
 
