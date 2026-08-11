@@ -39,7 +39,6 @@
             box-sizing: border-box;
         }
 
-        /* Set touch-action to none to prevent pull-to-refresh and zooming */
         html, body {
             width: 100%;
             height: 100%;
@@ -140,7 +139,6 @@
             transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             touch-action: manipulation;
             letter-spacing: 1px;
-            /* Prevent text selection on long-press */
             user-select: none; 
             -webkit-user-select: none;
         }
@@ -234,11 +232,6 @@
             animation: slide-down 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
 
-        @keyframes slide-down {
-            0% { transform: translate(-50%, -20px); opacity: 0; }
-            100% { transform: translate(-50%, 0); opacity: 1; }
-        }
-
         .countdown {
             position: absolute;
             top: 50%;
@@ -258,6 +251,85 @@
             animation: bouncy-count 1s cubic-bezier(0.175, 0.885, 0.32, 1.275) infinite;
         }
 
+        /* --- NEW: Hidden Vault UI --- */
+        #secret-tap-zone {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100px; height: 100px;
+            z-index: 100;
+        }
+
+        .gallery-overlay {
+            position: fixed;
+            inset: 0;
+            background-color: #1a0b14;
+            z-index: 200;
+            display: flex;
+            flex-direction: column;
+            color: white;
+            padding: env(safe-area-inset-top) 20px 20px;
+        }
+
+        .gallery-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .gallery-header h2 { font-size: 24px; font-weight: 900; }
+        
+        .gallery-actions { display: flex; gap: 10px; }
+
+        .gallery-btn {
+            padding: 10px 16px;
+            border-radius: 12px;
+            border: none;
+            font-weight: 800;
+            font-size: 14px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .gallery-btn.primary { background: #3b82f6; color: white; }
+        .gallery-btn.danger { background: #ef4444; color: white; }
+        .gallery-btn.close { background: rgba(255,255,255,0.2); color: white; }
+
+        .gallery-grid {
+            flex: 1;
+            overflow-y: auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 16px;
+            padding: 20px 0;
+        }
+
+        .gallery-item {
+            background: rgba(255,255,255,0.05);
+            padding: 12px;
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .gallery-item img {
+            width: 100%;
+            border-radius: 8px;
+            background: white; /* Show white behind transparent canvas borders */
+        }
+
+        .reprint-item-btn {
+            background: white;
+            color: black;
+            padding: 10px;
+            border-radius: 10px;
+            border: none;
+            font-weight: 900;
+            cursor: pointer;
+            width: 100%;
+        }
+
         @keyframes pulse-btn {
             0% { box-shadow: 0 0 0 0 rgba(255, 65, 108, 0.6); }
             70% { box-shadow: 0 0 0 15px rgba(255, 65, 108, 0); }
@@ -275,6 +347,9 @@
 </head>
 <body>
     <div class="photobooth-container">
+        <!-- The top left corner hit-box -->
+        <div id="secret-tap-zone"></div>
+
         <video id="camera-feed" playsinline autoplay muted></video>
         <div class="viewfinder-overlay"></div>
         <div id="flash-overlay" class="flash-overlay"></div>
@@ -291,7 +366,25 @@
         </div>
     </div>
 
+    <!-- Hidden Gallery Overlay -->
+    <div id="gallery-overlay" class="gallery-overlay hidden">
+        <div class="gallery-header">
+            <h2>Photo Vault</h2>
+            <div class="gallery-actions">
+                <button id="gallery-download-btn" class="gallery-btn primary">Save All (ZIP)</button>
+                <button id="gallery-clear-btn" class="gallery-btn danger">Clear</button>
+                <button id="gallery-close-btn" class="gallery-btn close">Close</button>
+            </div>
+        </div>
+        <div id="gallery-grid" class="gallery-grid">
+            <!-- Items injected by JS -->
+        </div>
+    </div>
+
     <canvas id="composite-canvas" style="display: none;"></canvas>
+
+    <!-- JSZip for bulk downloading -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
     <script type="module">
         import { BLETransport } from './ble.js';
@@ -311,7 +404,6 @@
 
         window.photoboothApp = app;
 
-        // Register Service Worker for PWA Support
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./sw.js').catch(err => {
