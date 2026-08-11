@@ -8,6 +8,15 @@
     <meta http-equiv="Expires" content="0">
     <title>Phomymo Photobooth</title>
     
+    <!-- PWA Manifest and Theme Colors -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1a0b14">
+    
+    <!-- iOS PWA Support -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Photobooth">
+    
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;900&display=swap" rel="stylesheet">
 
     <script>
@@ -30,12 +39,14 @@
             box-sizing: border-box;
         }
 
+        /* Set touch-action to none to prevent pull-to-refresh and zooming */
         html, body {
             width: 100%;
             height: 100%;
             overflow: hidden;
             background-color: #1a0b14;
             font-family: 'Nunito', -apple-system, BlinkMacSystemFont, sans-serif;
+            touch-action: none; 
         }
 
         body {
@@ -62,7 +73,6 @@
             transform: scaleX(-1);
         }
 
-        /* Viewfinder framing box matching 3:4 portrait print aspect ratio */
         .viewfinder-overlay {
             position: absolute;
             top: 48%;
@@ -116,7 +126,6 @@
             margin: 0 auto;
         }
 
-        /* Buttons Styling */
         #start-button {
             flex: 1;
             height: 64px;
@@ -131,6 +140,9 @@
             transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             touch-action: manipulation;
             letter-spacing: 1px;
+            /* Prevent text selection on long-press */
+            user-select: none; 
+            -webkit-user-select: none;
         }
 
         #start-button:not(:disabled) {
@@ -163,6 +175,8 @@
             transition: all 0.2s ease;
             touch-action: manipulation;
             letter-spacing: 1px;
+            user-select: none;
+            -webkit-user-select: none;
         }
 
         #cancel-print-btn:active {
@@ -182,6 +196,8 @@
             transition: all 0.2s ease;
             touch-action: manipulation;
             backdrop-filter: blur(4px);
+            user-select: none;
+            -webkit-user-select: none;
         }
 
         #reprint-btn:active {
@@ -294,6 +310,15 @@
         });
 
         window.photoboothApp = app;
+
+        // Register Service Worker for PWA Support
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').catch(err => {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
     </script>
 </body>
 </html>
