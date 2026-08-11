@@ -1,6 +1,6 @@
 # Phomymo Photobooth
 
-A Progressive Web App (PWA) DIY photobooth for Android Chrome and Phomemo thermal printers. Captures 3 photos in a 3:4 portrait ratio, adds perfect rounded corners, stitches them into a classic film-strip layout, and prints directly to your Phomemo thermal printer via Web Bluetooth—no drivers, no apps required.
+A Progressive Web App (PWA) DIY photobooth for Android Chrome and Phomemo thermal printers. Captures 3 photos in a 3:4 portrait ratio, adds perfect rounded corners, stitches them into a classic film-strip layout, and prints directly to your Phomemo thermal printer via Web Bluetooth - no drivers, no apps required.
 
 Perfect for parties, events, and gatherings where guests can walk up, tap a button (or a Bluetooth selfie remote), and take home a printed strip of memories.
 
