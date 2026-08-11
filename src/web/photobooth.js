@@ -17,9 +17,13 @@ export class PhotoboothApp {
     this.flashElement = this.resolveElement(options.flashElementId);
     this.compositeCanvasElement = this.resolveElement(options.compositeCanvasId);
     
+    // UI Elements for the Vault
+    this.galleryOverlay = document.getElementById('gallery-overlay');
+    this.galleryGrid = document.getElementById('gallery-grid');
+    
     this.photoCount = 3;           
     this.printerWidthPx = 576;     
-    this.photoHeightPx = 768;      // 3:4 Aspect ratio height
+    this.photoHeightPx = 768;      
     this.borderSize = 16;          
     this.bottomMargin = 160;       
     this.cornerRadius = 32;        
@@ -33,6 +37,7 @@ export class PhotoboothApp {
     this.statusTimeout = null;
     
     this.ble = BLETransport.getShared();
+    this.db = null; // IndexedDB instance
     
     this.init();
   }
@@ -47,6 +52,10 @@ export class PhotoboothApp {
   
   async init() {
     try {
+      // 1. Initialize the hidden database
+      await this.initDB();
+
+      // 2. Start Camera
       this.stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'user',
@@ -60,12 +69,12 @@ export class PhotoboothApp {
         this.videoElement.play();
       }
       
+      // 3. Setup core buttons
       if (this.startButton) {
         this.startButton.addEventListener('click', () => this.startPhotoSession());
       }
       if (this.cancelButton) {
         this.cancelButton.addEventListener('click', () => { 
-          // Set the flag; printer.js will now natively drain the remaining bytes
           this.printCancelled = true; 
         });
       }
@@ -73,33 +82,226 @@ export class PhotoboothApp {
         this.reprintButton.addEventListener('click', () => this.handleReprint());
       }
 
-      // --- NEW: Bluetooth Selfie Clicker Listener ---
+      // 4. Bluetooth Selfie Clicker Listener
       window.addEventListener('keydown', (event) => {
-        // Selfie remotes usually send Volume Up, Enter, or Space
         const triggerKeys = ['Enter', ' ', 'VolumeUp', 'AudioVolumeUp', 'VolumeDown', 'AudioVolumeDown'];
-        
+        // Don't trigger if gallery is open
+        if (!this.galleryOverlay.classList.contains('hidden')) return;
+
         if (triggerKeys.includes(event.key) || triggerKeys.includes(event.code)) {
-          event.preventDefault(); // Stop the phone from actually turning up the volume
-          
-          // Only start if the booth is ready and not already taking photos
+          event.preventDefault(); 
           if (!this.isCapturing && !this.startButton.disabled) {
-            // Give the UI a quick visual pop so they know the button worked
             this.startButton.style.transform = 'scale(0.94)';
             setTimeout(() => this.startButton.style.transform = '', 150);
-            
             this.startPhotoSession();
           }
         }
       });
-      // ----------------------------------------------
+
+      // 5. Secret Tap Zone Logic (5 taps in 2 seconds)
+      const tapZone = document.getElementById('secret-tap-zone');
+      let tapCount = 0;
+      let lastTap = 0;
+      
+      const handleSecretTap = (e) => {
+        e.preventDefault();
+        const now = Date.now();
+        if (now - lastTap > 2000) tapCount = 0; // Reset if too slow
+        tapCount++;
+        lastTap = now;
+        
+        if (tapCount >= 5) {
+          tapCount = 0;
+          this.openGallery();
+        }
+      };
+      
+      if (tapZone) {
+        tapZone.addEventListener('touchstart', handleSecretTap);
+        tapZone.addEventListener('click', handleSecretTap); // Mouse support
+      }
+
+      // 6. Gallery Buttons
+      document.getElementById('gallery-close-btn')?.addEventListener('click', () => {
+        this.galleryOverlay.classList.add('hidden');
+      });
+      document.getElementById('gallery-clear-btn')?.addEventListener('click', () => {
+        if(confirm('Are you sure? This will delete all saved photos forever.')) {
+          this.clearSessions();
+        }
+      });
+      document.getElementById('gallery-download-btn')?.addEventListener('click', () => {
+        this.downloadAllPhotos();
+      });
       
       this.updateStatus('Ready! Tap Start to begin.', true);
       this.hideStatusAfter(5000);
     } catch (error) {
-      console.error('Camera access error:', error);
+      console.error('Initialization error:', error);
       this.updateStatus('Camera not available. Please check permissions.', true);
     }
   }
+
+  // ==========================================
+  // INDEXED-DB VAULT LOGIC
+  // ==========================================
+  
+  initDB() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('PhotoboothVault', 1);
+      
+      request.onerror = (e) => {
+        console.error('IndexedDB Error:', e);
+        reject(e);
+      };
+      
+      request.onsuccess = (e) => {
+        this.db = e.target.result;
+        resolve();
+      };
+      
+      request.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('sessions')) {
+          // Auto-incrementing ID for each photo session
+          db.createObjectStore('sessions', { keyPath: 'id', autoIncrement: true });
+        }
+      };
+    });
+  }
+
+  saveSessionToVault(photosArray, thumbnailDataUrl) {
+    if (!this.db) return;
+    const transaction = this.db.transaction(['sessions'], 'readwrite');
+    const store = transaction.objectStore('sessions');
+    
+    const session = {
+      timestamp: Date.now(),
+      photos: [...photosArray], 
+      thumbnail: thumbnailDataUrl
+    };
+    
+    store.add(session);
+  }
+
+  getAllSessions() {
+    return new Promise((resolve) => {
+      if (!this.db) return resolve([]);
+      const transaction = this.db.transaction(['sessions'], 'readonly');
+      const store = transaction.objectStore('sessions');
+      const request = store.getAll();
+      
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => resolve([]);
+    });
+  }
+
+  clearSessions() {
+    if (!this.db) return;
+    const transaction = this.db.transaction(['sessions'], 'readwrite');
+    const store = transaction.objectStore('sessions');
+    store.clear();
+    transaction.oncomplete = () => {
+      this.galleryGrid.innerHTML = '';
+      alert('Vault cleared!');
+    };
+  }
+
+  async openGallery() {
+    if (!this.galleryOverlay) return;
+    this.galleryGrid.innerHTML = '<p style="text-align:center; width:100%;">Loading Vault...</p>';
+    this.galleryOverlay.classList.remove('hidden');
+
+    const sessions = await this.getAllSessions();
+    this.galleryGrid.innerHTML = '';
+
+    if (sessions.length === 0) {
+      this.galleryGrid.innerHTML = '<p style="text-align:center; width:100%;">The vault is empty.</p>';
+      return;
+    }
+
+    // Render newest sessions first
+    sessions.reverse().forEach(session => {
+      const item = document.createElement('div');
+      item.className = 'gallery-item';
+      
+      const img = document.createElement('img');
+      img.src = session.thumbnail;
+      
+      const btn = document.createElement('button');
+      btn.className = 'reprint-item-btn';
+      btn.textContent = 'Reprint';
+      
+      // Hook up the live reprint logic
+      btn.addEventListener('click', () => {
+        this.galleryOverlay.classList.add('hidden'); // Close vault to see status
+        this.handleGalleryReprint(session.photos);
+      });
+      
+      item.appendChild(img);
+      item.appendChild(btn);
+      this.galleryGrid.appendChild(item);
+    });
+  }
+
+  async downloadAllPhotos() {
+    if (!window.JSZip) {
+      alert("JSZip library didn't load properly!");
+      return;
+    }
+
+    const sessions = await this.getAllSessions();
+    if (sessions.length === 0) {
+      alert('Vault is empty!');
+      return;
+    }
+
+    // Change button text while processing
+    const dlBtn = document.getElementById('gallery-download-btn');
+    const originalText = dlBtn.textContent;
+    dlBtn.textContent = 'Zipping...';
+    dlBtn.disabled = true;
+
+    try {
+      const zip = new window.JSZip();
+
+      // Bundle individual photos into categorized folders
+      sessions.forEach((session, sIdx) => {
+        const dateStr = new Date(session.timestamp).toISOString().replace(/[:.]/g, '-');
+        const folderName = `Session_${sIdx + 1}_${dateStr}`;
+        const folder = zip.folder(folderName);
+
+        session.photos.forEach((photoData, pIdx) => {
+          // Strip the "data:image/jpeg;base64," prefix for JSZip
+          const base64Data = photoData.split(',')[1];
+          folder.file(`Photo_${pIdx + 1}.jpg`, base64Data, {base64: true});
+        });
+      });
+
+      const content = await zip.generateAsync({type: 'blob'});
+      
+      // Trigger local download
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Photobooth_Backup_${new Date().toISOString().split('T')[0]}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+    } catch (e) {
+      console.error("Zip failed:", e);
+      alert("Failed to create ZIP file.");
+    } finally {
+      dlBtn.textContent = originalText;
+      dlBtn.disabled = false;
+    }
+  }
+
+  // ==========================================
+  // CORE PHOTO LOGIC
+  // ==========================================
 
   updateStatus(message, animate = true) {
     if (this.statusElement) {
@@ -141,7 +343,6 @@ export class PhotoboothApp {
       }
         
       this.updateStatus('Get ready!', true);
-      
       await this.showScreenMessage('Smile!', 1500);
       
       for (let i = 0; i < this.photoCount; i++) {
@@ -150,7 +351,8 @@ export class PhotoboothApp {
       }
       
       this.updateStatus('Stitching photos...', true);
-      const compositeCanvas = await this.stitchPhotos();
+      // We explicitly pass this.capturedPhotos
+      const compositeCanvas = await this.stitchPhotos(this.capturedPhotos);
       
       if (this.compositeCanvasElement) {
         const ctx = this.compositeCanvasElement.getContext('2d');
@@ -159,6 +361,10 @@ export class PhotoboothApp {
         ctx.drawImage(compositeCanvas, 0, 0);
       }
       
+      // Save to Vault: Generate a low-res thumbnail of the stitched strip for the UI
+      const thumbnailData = compositeCanvas.toDataURL('image/jpeg', 0.4);
+      this.saveSessionToVault(this.capturedPhotos, thumbnailData);
+
       this.updateStatus('Processing image for printer...', true);
       this.lastRasterData = this.getRasterDataFromCanvas(compositeCanvas);
       
@@ -171,6 +377,37 @@ export class PhotoboothApp {
     } finally {
       this.isCapturing = false;
       this.startButton.disabled = false;
+    }
+  }
+
+  // New method specifically for printing from the Gallery Vault
+  async handleGalleryReprint(photosArray) {
+    if (this.isCapturing) return;
+    this.isCapturing = true;
+    
+    try {
+      if (!this.ble.isConnected()) {
+        this.updateStatus('Please select your Phomemo printer...', true);
+        await this.ble.connect();
+      }
+      
+      this.updateStatus('Re-stitching saved photos...', true);
+      const compositeCanvas = await this.stitchPhotos(photosArray);
+      
+      this.updateStatus('Processing for printer...', true);
+      const rasterData = this.getRasterDataFromCanvas(compositeCanvas);
+      
+      // Update global last print so standard reprint button on main screen grabs this one
+      this.lastRasterData = rasterData;
+      
+      await this.executePrint(rasterData);
+
+    } catch (error) {
+      console.error('Gallery reprint error:', error);
+      this.updateStatus(`Error: ${error.message}`, true);
+      this.hideStatusAfter(5000);
+    } finally {
+      this.isCapturing = false;
     }
   }
 
@@ -227,14 +464,10 @@ export class PhotoboothApp {
       if (error.message === 'CANCELLED') {
         this.updateStatus('Print cancelled. Ejecting paper...', true);
         try {
-          // The printer has safely drained the zeroes and completed the raster command.
-          // We can now safely send normal ESC/POS recovery commands.
           await new Promise(r => setTimeout(r, 100));
-          await this.ble.send(new Uint8Array([0x1b, 0x40])); // ESC @ Hardware Reset
-          
+          await this.ble.send(new Uint8Array([0x1b, 0x40])); 
           await new Promise(r => setTimeout(r, 100));
-          await this.ble.send(new Uint8Array([0x1b, 0x4a, 160])); // ESC J 160
-          
+          await this.ble.send(new Uint8Array([0x1b, 0x4a, 160])); 
           await new Promise(r => setTimeout(r, 300));
         } catch (e) {
           console.error('Failed to recover printer after cancellation:', e);
@@ -350,18 +583,19 @@ export class PhotoboothApp {
     });
   }
   
-  stitchPhotos() {
+  // Now accepts an array so we can stitch live sessions OR saved gallery sessions
+  stitchPhotos(photosArray) {
     return new Promise((resolve, reject) => {
       const photoImages = [];
       let loadedCount = 0;
       
-      this.capturedPhotos.forEach((photoData, index) => {
+      photosArray.forEach((photoData, index) => {
         const img = new Image();
         img.onload = () => {
           photoImages[index] = img;
           loadedCount++;
           
-          if (loadedCount === this.capturedPhotos.length) {
+          if (loadedCount === photosArray.length) {
             const composite = this.createComposite(photoImages);
             resolve(composite);
           }
